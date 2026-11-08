@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=10';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=11';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
