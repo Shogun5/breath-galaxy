@@ -3,7 +3,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=12';
+import { tr } from './i18n.js?v=13';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=13';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
@@ -343,7 +344,7 @@ export class Galaxy {
     this.brain.ready.catch((e) => console.warn('brain model failed to load', e));
     this.world.add(this.brain.group);
     this.labels = SENSORS.map((s) => {
-      const tag = makeLabel(`${s.id} ${s.place}`);
+      const tag = makeLabel(`${s.id} ${tr(s.place)}`);
       tag.position.copy(s.pos).multiplyScalar(1.22);
       tag.position.y += 0.5;
       this.world.add(tag);
@@ -357,6 +358,10 @@ export class Galaxy {
     });
   }
 
+  relabel() {
+    this.labels?.forEach((tag, i) => tag.userData.setTitle(`${SENSORS[i].id} ${tr(SENSORS[i].place)}`));
+  }
+
   #updateLabels() {
     const now = performance.now();
     if (!this.labels || now - this.#labelAt < 500) return;
@@ -367,7 +372,7 @@ export class Galaxy {
       let best = 0;
       for (let b = 1; b < 5; b++) if (this.energy[c * 5 + b] > this.energy[c * 5 + best]) best = b;
       const v = this.energy[c * 5 + best];
-      tag.userData.setText(!live ? '' : v < 0.55 ? '平穩' : `${names[best]} 偏強`);
+      tag.userData.setText(!live ? '' : v < 0.55 ? tr('平穩') : tr('{0} 偏強', names[best]));
     });
   }
 

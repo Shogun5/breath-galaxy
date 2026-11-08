@@ -57,7 +57,8 @@ export function buildBrain(quality) {
 }
 
 // A two-line tag that faces the viewer, usable in every display mode.
-export function makeLabel(title) {
+export function makeLabel(firstTitle) {
+  let title = firstTitle, line = '';
   const c = document.createElement('canvas');
   c.width = 512; c.height = 160;
   const tex = new THREE.CanvasTexture(c);
@@ -69,19 +70,20 @@ export function makeLabel(title) {
   let last = null;
   sprite.userData.setText = (line2) => {
     if (line2 === last) return;
-    last = line2;
+    last = line2; line = line2;
     g.clearRect(0, 0, 512, 160);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.shadowColor = '#020308'; g.shadowBlur = 14;
     g.fillStyle = '#EDE9F7';
-    g.font = '500 54px "Noto Sans TC", sans-serif';
+    g.font = '500 44px "Noto Sans TC", sans-serif';
     g.fillText(title, 256, 52);
     g.fillStyle = '#FFB7A8';
-    g.font = '300 46px "Noto Sans TC", sans-serif';
+    g.font = '300 42px "Noto Sans TC", sans-serif';
     g.fillText(line2, 256, 118);
     tex.needsUpdate = true;
   };
+  sprite.userData.setTitle = (t) => { title = t; last = null; sprite.userData.setText(line); };
   sprite.userData.setText('');
   return sprite;
 }

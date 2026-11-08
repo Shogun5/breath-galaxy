@@ -1,13 +1,15 @@
 // Phone-to-headset link for headsets whose browser cannot reach the Muse directly.
 // A public PeerJS broker introduces the two devices; the data then flows device to device.
 
+import { tr } from './i18n.js?v=13';
+
 function loadPeer() {
   if (window.Peer) return Promise.resolve();
   return new Promise((res, rej) => {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
     s.onload = res;
-    s.onerror = () => rej(new Error('無法載入轉傳元件，請確認網路'));
+    s.onerror = () => rej(new Error(tr('無法載入轉傳元件，請確認網路')));
     document.head.append(s);
   });
 }

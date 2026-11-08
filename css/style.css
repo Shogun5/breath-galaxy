@@ -14,8 +14,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .screen.on { display: block; animation: rise .45s ease-out; }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
 @media (prefers-reduced-motion: reduce) { .screen.on { animation: none; } }
-@media (max-width: 720px) { .screen { background: rgba(11,13,16,.82); } }
+@media (max-width: 720px) { .screen { background: rgba(11,13,16,.82); padding-top: 64px; } }
 
+.lang-bar { position: fixed; z-index: 5; top: max(10px, env(safe-area-inset-top)); right: 12px; display: flex; gap: 4px; }
+.lang-bar button { min-height: 44px; padding: 0 10px; font-size: 13px; background: rgba(11,13,16,.6); }
+.lang-bar button[aria-pressed="true"] { background: rgba(139,92,246,.35); border-color: var(--accent); }
+#session:not([hidden]) ~ .lang-bar { display: none; }
+:lang(ja) { --sans: "Noto Sans JP", "Noto Sans TC", system-ui, sans-serif; }
+:lang(en) h1, :lang(ja) h1 { font-size: clamp(56px, 11vw, 112px); letter-spacing: 0; }
 .panel { max-width: 460px; }
 .panel.wide { max-width: 640px; }
 .eyebrow { margin: 0 0 4px; font: 300 13px var(--num); letter-spacing: .14em; color: var(--muted); }

@@ -1,9 +1,10 @@
-import { Galaxy } from './galaxy.js?v=12';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=12';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=12';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=12';
-import { Soundscape } from './audio.js?v=12';
-import { hostRelay, joinRelay } from './relay.js?v=12';
+import { Galaxy } from './galaxy.js?v=13';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=13';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=13';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=13';
+import { Soundscape } from './audio.js?v=13';
+import { hostRelay, joinRelay } from './relay.js?v=13';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=13';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -49,11 +50,11 @@ async function deviceChecks() {
   try { vr = !!(await navigator.xr?.isSessionSupported('immersive-vr')); } catch { /* unsupported */ }
   S.vr = vr;
   const gl = !!document.createElement('canvas').getContext('webgl2');
-  const row = (k, ok) => `<li>${k}：<b>${ok ? '可用' : '不可用'}</b></li>`;
-  $('checks').innerHTML = row('藍牙', bt) + row('WebXR VR', vr) + row('WebGL2', gl) + row('安全連線', isSecureContext);
+  const row = (k, ok) => `<li>${k}：<b>${ok ? tr('可用') : tr('不可用')}</b></li>`;
+  $('checks').innerHTML = row(tr('藍牙'), bt) + row('WebXR VR', vr) + row('WebGL2', gl) + row(tr('安全連線'), isSecureContext);
   if (!bt) {
     $('btn-muse').disabled = true;
-    $('connect-status').textContent = '此瀏覽器無法直接連 Muse。請用 Android／電腦 Chrome，或以手機轉傳到 Quest。';
+    $('connect-status').textContent = tr('此瀏覽器無法直接連 Muse。請用 Android／電腦 Chrome，或以手機轉傳到 Quest。');
   }
 }
 function attach(source) {
@@ -134,7 +135,7 @@ function fireBeat() {
 }
 
 async function onDisconnect() {
-  note('Muse 連線中斷，正在重新連線…');
+  note(tr('Muse 連線中斷，正在重新連線…'));
   logEvent('disconnect');
   for (let i = 0; i < 4; i++) {
     await new Promise((r) => setTimeout(r, 2000));
@@ -142,12 +143,12 @@ async function onDisconnect() {
       await S.source.reconnect();
       S.eeg.reset(); S.ppg.reset();
       logEvent('reconnect', `attempt ${i + 1}`);
-      note('已重新連線');
+      note(tr('已重新連線'));
       setTimeout(() => note(''), 2500);
       return;
     } catch { /* retry */ }
   }
-  note('無法重新連線。已記錄的資料都還在，可按「結束」後匯出。');
+  note(tr('無法重新連線。已記錄的資料都還在，可按「結束」後匯出。'));
   logEvent('reconnect_failed');
 }
 function note(t) { $('h-notice').textContent = t; if (S.phase === 'calib') $('calib-status').textContent = t; if (S.settings.display !== 'flat' && t) S.hudNote = t; }
@@ -162,7 +163,7 @@ $('btn-sim').onclick = async () => {
 $('btn-muse').onclick = async () => {
   const st = $('connect-status');
   try {
-    st.textContent = '請在視窗中選擇您的 Muse…';
+    st.textContent = tr('請在視窗中選擇您的 Muse…');
     const s = new MuseSource();
     attach(s);
     await s.connect();
@@ -170,7 +171,7 @@ $('btn-muse').onclick = async () => {
     go('settings');
   } catch (e) {
     S.source = null;
-    st.textContent = e.name === 'NotFoundError' ? '未選擇裝置。請確認 Muse 已開機，且官方 App 已斷線。' : `連線失敗：${e.message}`;
+    st.textContent = e.name === 'NotFoundError' ? tr('未選擇裝置。請確認 Muse 已開機，且官方 App 已斷線。') : tr('連線失敗：{0}', e.message);
   }
 };
 $('btn-receive').onclick = () => go('receive');
@@ -178,7 +179,7 @@ $('btn-receive').onclick = () => go('receive');
 /* ---------- settings ---------- */
 function fillSettings() {
   const v = S.settings;
-  $('source-label').textContent = `已連線：${S.source?.name ?? ''}`;
+  $('source-label').textContent = tr('已連線：{0}', tr(S.source?.name ?? ''));
   document.querySelectorAll('.seg').forEach(paintSeg);
   $('minutes-custom').value = [5, 10, 15].includes(v.minutes) ? '' : v.minutes;
   $('breath').value = v.breath; $('inhale').value = v.inhale;
@@ -200,9 +201,9 @@ function paintDisplay() {
   const d = S.settings.display;
   $('sbs-row').hidden = d !== 'sbs';
   $('display-hint').textContent = {
-    flat: '單指：左半邊移動、右半邊轉視角。電腦用 WASD 與滑鼠。',
-    sbs: '請先把眼鏡切到 3D 模式。手機畫面不顯示按鈕：左半移動、右半轉向；雙擊暫停、兩指標記、三指連按兩次結束。',
-    quest: S.vr ? '左搖桿漂浮移動；右搖桿上下與轉向；A 標記、握把暫停、B 重設。' : '此裝置沒有 VR。校準後會顯示代碼，讓 Quest 接收這台手機的資料；紀錄存在這台手機。',
+    flat: tr('單指：左半邊移動、右半邊轉視角。電腦用 WASD 與滑鼠。'),
+    sbs: tr('請先把眼鏡切到 3D 模式。手機畫面不顯示按鈕：左半移動、右半轉向；雙擊暫停、兩指標記、三指連按兩次結束。'),
+    quest: S.vr ? tr('左搖桿漂浮移動；右搖桿上下與轉向；A 標記、握把暫停、B 重設。') : tr('此裝置沒有 VR。校準後會顯示代碼，讓 Quest 接收這台手機的資料；紀錄存在這台手機。'),
   }[d];
 }
 document.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
@@ -237,10 +238,10 @@ async function beginCalibration() {
   S.calibStart = S.t0;
   S.sum = newSummary();
   S.rec = new Recorder({ subject: S.settings.subject, note: S.settings.note, source: S.source.name, settings: { ...S.settings } });
-  try { await S.rec.open(); } catch (e) { S.rec = null; note(`無法開啟本機儲存，這次不會記錄：${e.message}`); }
+  try { await S.rec.open(); } catch (e) { S.rec = null; note(tr('無法開啟本機儲存，這次不會記錄：{0}', e.message)); }
   logEvent('calibration_start');
   S.phase = 'calib';
-  $('btn-enter').disabled = true; $('btn-enter').textContent = '校準中';
+  $('btn-enter').disabled = true; $('btn-enter').textContent = tr('校準中');
   $('btn-early').disabled = true; $('btn-early').hidden = false;
   $('calib-status').textContent = '';
   $('relay-box').hidden = true;
@@ -257,7 +258,7 @@ async function beginCalibration() {
 function newSummary() { return { zSum: [0, 0, 0, 0, 0], n: 0, frames: 0, artifact: 0, ibis: [], trend: [], bucket: null, rowsStart: 0, startMs: 0 }; }
 
 function renderQuality(f) {
-  const t = { good: '良好', fair: '普通', bad: '不佳' };
+  const t = { good: tr('良好'), fair: tr('普通'), bad: tr('不佳') };
   $('quality').innerHTML = CHANNELS.map((c, i) => `<div class="${f.quality[i]}">${c}<b>${t[f.quality[i]]}</b></div>`).join('');
 }
 function finishCalibration() {
@@ -270,20 +271,20 @@ function finishCalibration() {
   logEvent('calibration_end', `clean_frames=${n}`);
   $('btn-early').hidden = true;
   $('calib-count').textContent = '0';
-  if (n < 30) $('calib-status').textContent = '乾淨訊號偏少，基準可能不準。建議調整頭帶後重新開始。';
+  if (n < 30) $('calib-status').textContent = tr('乾淨訊號偏少，基準可能不準。建議調整頭帶後重新開始。');
   if (S.settings.display === 'quest' && !S.vr) startRelayHost();
-  else { $('btn-enter').disabled = false; $('btn-enter').textContent = '進入銀河'; }
+  else { $('btn-enter').disabled = false; $('btn-enter').textContent = tr('進入銀河'); }
 }
 $('btn-early').onclick = finishCalibration;
 $('btn-enter').onclick = () => enterSession();
 
 async function startRelayHost() {
   $('relay-box').hidden = false;
-  $('btn-enter').textContent = '等待 Quest';
+  $('btn-enter').textContent = tr('等待 Quest');
   try {
     S.relay = await hostRelay({
       onOpen: () => {
-        $('relay-status').textContent = 'Quest 已連線，請在 Quest 按「進入 VR」';
+        $('relay-status').textContent = tr('Quest 已連線，請在 Quest 按「進入 VR」');
         S.relay.send({ t: 'config', settings: S.settings });
       },
       onMessage: (m) => {
@@ -291,8 +292,8 @@ async function startRelayHost() {
         else if (m.t === 'mark') doMark('controller');
         else if (m.t === 'pause') togglePause();
       },
-      onClose: () => { $('relay-status').textContent = 'Quest 已離線'; logEvent('relay_closed'); note('Quest 已離線，記錄仍在繼續'); },
-      onError: (e) => { $('relay-status').textContent = `轉傳錯誤：${e.message || e.type}`; },
+      onClose: () => { $('relay-status').textContent = tr('Quest 已離線'); logEvent('relay_closed'); note(tr('Quest 已離線，記錄仍在繼續')); },
+      onError: (e) => { $('relay-status').textContent = tr('轉傳錯誤：{0}', e.message || e.type); },
     });
     $('relay-code').textContent = S.relay.code;
   } catch (e) { $('relay-status').textContent = e.message; }
@@ -304,7 +305,7 @@ async function enterSession() {
   S.localMode = d === 'quest' && !S.vr ? 'flat' : d;
   if (S.localMode === 'quest') {
     try { await galaxy.startXR(); }
-    catch (e) { $('calib-status').textContent = `無法進入 VR：${e.message}`; return; }
+    catch (e) { $('calib-status').textContent = tr('無法進入 VR：{0}', e.message); return; }
     galaxy.onXREnd = () => { if (S.phase === 'session') endSession('headset_exit'); };
   } else if (S.localMode === 'sbs') {
     try { await document.documentElement.requestFullscreen(); await screen.orientation?.lock?.('landscape'); } catch { /* the view still works windowed */ }
@@ -371,7 +372,7 @@ galaxy.onFrame = () => {
     const b = visualTick(f.settings, f.elapsed, f.paused);
     if (now > hudAt) {
       hudAt = now + 250;
-      galaxy.setHud(clock(Math.max(0, f.settings.minutes * 60 - f.elapsed)), f.paused ? '暫停' : b.inhale ? '吸氣' : '吐氣', f.hr ? `${Math.round(f.hr)} bpm` : '');
+      galaxy.setHud(clock(Math.max(0, f.settings.minutes * 60 - f.elapsed)), f.paused ? tr('暫停') : b.inhale ? tr('吸氣') : tr('吐氣'), f.hr ? `${Math.round(f.hr)} bpm` : '');
     }
   } else if (S.phase === 'calib' && S.an.baseline === null) {
     idleEnergy(now);
@@ -389,12 +390,12 @@ function idleEnergy(now) {
 
 function drawHud(b) {
   const left = S.settings.minutes * 60 - S.elapsed;
-  const word = S.paused ? '暫停' : b.inhale ? '吸氣' : '吐氣';
+  const word = S.paused ? tr('暫停') : b.inhale ? tr('吸氣') : tr('吐氣');
   const hr = S.beats.bpm;
   $('h-time').textContent = clock(Math.max(0, left));
   $('h-breath').textContent = word;
   $('h-hr').textContent = hr ? `${Math.round(hr)} bpm` : '— bpm';
-  if (S.localMode !== 'flat') galaxy.setHud(clock(Math.max(0, left)), S.endArmed ? '再一次結束' : word, hr ? `${Math.round(hr)} bpm` : '');
+  if (S.localMode !== 'flat') galaxy.setHud(clock(Math.max(0, left)), S.endArmed ? tr('再一次結束') : word, hr ? `${Math.round(hr)} bpm` : '');
 }
 
 // 10 Hz analysis clock
@@ -459,25 +460,25 @@ function closeBucket() {
 
 function doMark(by = 'user') {
   logEvent('mark', by);
-  note('已標記');
-  setTimeout(() => { if ($('h-notice').textContent === '已標記') note(''); }, 1200);
+  note(tr('已標記'));
+  setTimeout(() => { if ($('h-notice').textContent === tr('已標記')) note(''); }, 1200);
 }
 function togglePause() {
   S.paused = !S.paused;
   logEvent(S.paused ? 'pause' : 'resume');
-  $('s-pause').textContent = S.paused ? '繼續' : '暫停';
+  $('s-pause').textContent = S.paused ? tr('繼續') : tr('暫停');
 }
 function armEnd() {
   if (S.endArmed) { clearTimeout(S.endTimer); endSession('user'); return; }
   S.endArmed = true;
-  $('s-end').textContent = '再按一次結束';
-  S.endTimer = setTimeout(() => { S.endArmed = false; $('s-end').textContent = '結束'; }, 3000);
+  $('s-end').textContent = tr('再按一次結束');
+  S.endTimer = setTimeout(() => { S.endArmed = false; $('s-end').textContent = tr('結束'); }, 3000);
 }
 
 async function endSession(reason) {
   if (S.phase !== 'session') return;
   S.phase = 'ending';
-  S.endArmed = false; clearTimeout(S.endTimer); $('s-end').textContent = '結束';
+  S.endArmed = false; clearTimeout(S.endTimer); $('s-end').textContent = tr('結束');
   logEvent('session_end', reason);
   closeBucket();
   S.relay?.send({ t: 'end' });
@@ -498,7 +499,7 @@ async function endSession(reason) {
   S.phase = 'idle';
   S.wake?.release?.(); S.wake = null;
   setTimeout(() => sound.stop(), reason === 'time_up' ? 3500 : 0);
-  S.resultNote = err ? `部分資料寫入失敗：${err.message}` : '';
+  S.resultNote = err ? tr('部分資料寫入失敗：{0}', err.message) : '';
   go('results');
 }
 
@@ -605,7 +606,7 @@ const SIM_CAPTION = {
 };
 function paintSimState(name) {
   document.querySelectorAll('#sim-states button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === name)));
-  $('sim-caption').textContent = SIM_CAPTION[name];
+  $('sim-caption').textContent = tr(SIM_CAPTION[name]);
   if (S.source instanceof SimSource) S.source.setState(name);
 }
 $('sim-states').addEventListener('click', (e) => {
@@ -629,15 +630,15 @@ addEventListener('keyup', (e) => { if (KEYS[e.code]) galaxy.moveInput[KEYS[e.cod
 $('btn-join').onclick = async () => {
   const code = $('receive-code').value.trim();
   const st = $('receive-status');
-  if (!/^\d{6}$/.test(code)) { st.textContent = '請輸入 6 位數代碼'; return; }
-  st.textContent = '連線中…';
+  if (!/^\d{6}$/.test(code)) { st.textContent = tr('請輸入 6 位數代碼'); return; }
+  st.textContent = tr('連線中…');
   const f = { running: false, paused: false, elapsed: 0, last: 0, settings: null, link: null, hr: null };
   try {
     f.link = await joinRelay(code, {
-      onOpen: () => { st.textContent = '已連線，等待手機設定…'; },
+      onOpen: () => { st.textContent = tr('已連線，等待手機設定…'); },
       onMessage: (m) => followerMessage(f, m),
-      onClose: () => { st.textContent = '手機已離線'; },
-      onError: (e) => { st.textContent = e.type === 'peer-unavailable' ? '找不到這組代碼' : `連線錯誤：${e.message || e.type}`; },
+      onClose: () => { st.textContent = tr('手機已離線'); },
+      onError: (e) => { st.textContent = e.type === 'peer-unavailable' ? tr('找不到這組代碼') : tr('連線錯誤：{0}', e.message || e.type); },
     });
     S.follower = f;
   } catch (e) { st.textContent = e.message; }
@@ -646,7 +647,7 @@ function followerMessage(f, m) {
   if (m.t === 'config') {
     f.settings = m.settings;
     galaxy.setView(m.settings.view || 'galaxy');
-    $('receive-status').textContent = '準備完成';
+    $('receive-status').textContent = tr('準備完成');
     $('btn-vr').hidden = false;
   } else if (m.t === 'go') {
     f.running = true; f.elapsed = 0; f.last = performance.now();
@@ -664,7 +665,7 @@ function followerMessage(f, m) {
     galaxy.setSession(false);
     galaxy.endXR();
     sound.stop();
-    $('receive-status').textContent = '本次結束，資料已存在手機上。';
+    $('receive-status').textContent = tr('本次結束，資料已存在手機上。');
     $('btn-vr').hidden = true;
   }
 }
@@ -675,7 +676,7 @@ $('btn-vr').onclick = async () => {
     await galaxy.startXR();
     galaxy.onXREnd = () => {};
     f.link.send({ t: 'ready' });
-  } catch (e) { st.textContent = `無法進入 VR：${e.message}`; }
+  } catch (e) { st.textContent = tr('無法進入 VR：{0}', e.message); }
 };
 
 /* ---------- results and history ---------- */
@@ -687,16 +688,16 @@ function renderResults() {
   const m = S.lastMeta;
   if (!m) return;
   const s = m.summary || {}, goal = m.settings?.goal;
-  $('r-meta').textContent = `${m.subject || '未填代號'}　${new Date(m.startedAt).toLocaleString()}　${m.source}　${GOAL_LABEL[goal] || ''}`;
+  $('r-meta').textContent = `${m.subject || tr('未填代號')}　${new Date(m.startedAt).toLocaleString(locale())}　${tr(m.source)}　${tr(GOAL_LABEL[goal] || '')}`;
   if (goal === 'coherence') {
     $('r-hero').textContent = n1(s.rmssd);
     $('r-hero-label').textContent = 'RMSSD（ms）';
   } else {
     const b = GOAL_BAND[goal] ?? 2;
     $('r-hero').textContent = signed(s.bandZ?.[b]);
-    $('r-hero-label').textContent = `${BANDS[b].label}，相對靜息基準（SD）`;
+    $('r-hero-label').textContent = tr('{0}，相對靜息基準（SD）', BANDS[b].label);
   }
-  const stats = [['平均心率', n1(s.hrMean)], ['RMSSD ms', n1(s.rmssd)], ['訓練分鐘', n1(s.minutes)], ['雜訊比例', n1(s.artifactPct, '%')], ['EEG 完整度', n1(s.eegCompletePct, '%')]];
+  const stats = [[tr('平均心率'), n1(s.hrMean)], ['RMSSD ms', n1(s.rmssd)], [tr('訓練分鐘'), n1(s.minutes)], [tr('雜訊比例'), n1(s.artifactPct, '%')], [tr('EEG 完整度'), n1(s.eegCompletePct, '%')]];
   $('r-stats').replaceChildren(...stats.map(([k, v]) => {
     const d = document.createElement('div');
     d.innerHTML = '<b></b><span></span>';
@@ -705,7 +706,7 @@ function renderResults() {
   }));
   const trend = s.trend || [];
   const series = BANDS.map((b, i) => ({ label: b.label, unit: 'SD', v: trend.map((p) => p.z[i]) }));
-  series.push({ label: '心率', unit: 'bpm', v: trend.map((p) => p.hr) });
+  series.push({ label: tr('心率'), unit: 'bpm', v: trend.map((p) => p.hr) });
   $('r-charts').replaceChildren(...series.map((x) => spark(x, trend)));
   $('r-share').hidden = !navigator.canShare;
   $('r-status').textContent = S.resultNote || '';
@@ -720,7 +721,7 @@ function spark(series, trend) {
   head.append(b, val);
   box.append(head);
   const pts = series.v.map((v, i) => [i, v]).filter((p) => p[1] !== null);
-  const latest = () => { val.textContent = pts.length ? `${pts[pts.length - 1][1]} ${series.unit}` : '資料不足'; };
+  const latest = () => { val.textContent = pts.length ? `${pts[pts.length - 1][1]} ${series.unit}` : tr('資料不足'); };
   latest();
   if (pts.length < 2) return box;
   const W = 300, H = 64, ys = pts.map((p) => p[1]);
@@ -733,7 +734,7 @@ function spark(series, trend) {
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('preserveAspectRatio', 'none');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `${series.label} 趨勢`);
+  svg.setAttribute('aria-label', tr('{0} 趨勢', series.label));
   const line = document.createElementNS(NS, 'path');
   line.setAttribute('d', pts.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(''));
   line.setAttribute('fill', 'none'); line.setAttribute('stroke', '#a98bf9'); line.setAttribute('stroke-width', '2');
@@ -756,14 +757,14 @@ function spark(series, trend) {
 
 async function runExport(meta, share, statusEl) {
   try {
-    statusEl.textContent = '正在打包…';
+    statusEl.textContent = tr('正在打包…');
     const { blob, filename } = await exportSession(meta);
     const how = await deliver(blob, filename, share);
-    statusEl.textContent = how === 'cancelled' ? '已取消分享' : `已匯出 ${filename}（${(blob.size / 1048576).toFixed(1)} MB）`;
-  } catch (e) { statusEl.textContent = `匯出失敗：${e.message}`; }
+    statusEl.textContent = how === 'cancelled' ? tr('已取消分享') : tr('已匯出 {0}（{1} MB）', filename, (blob.size / 1048576).toFixed(1));
+  } catch (e) { statusEl.textContent = tr('匯出失敗：{0}', e.message); }
 }
 $('r-export').onclick = () => {
-  if (!S.lastMeta.id) { $('r-status').textContent = '這次未能使用本機儲存，沒有可匯出的資料。'; return; }
+  if (!S.lastMeta.id) { $('r-status').textContent = tr('這次未能使用本機儲存，沒有可匯出的資料。'); return; }
   runExport(S.lastMeta, false, $('r-status'));
 };
 $('r-share').onclick = () => runExport(S.lastMeta, true, $('r-status'));
@@ -772,36 +773,50 @@ async function renderHistory() {
   const list = $('hist-list'), st = $('hist-status');
   list.replaceChildren();
   let all = [];
-  try { all = await listSessions(); } catch (e) { st.textContent = `無法讀取紀錄：${e.message}`; return; }
-  st.textContent = all.length ? '' : '還沒有紀錄。';
+  try { all = await listSessions(); } catch (e) { st.textContent = tr('無法讀取紀錄：{0}', e.message); return; }
+  st.textContent = all.length ? '' : tr('還沒有紀錄。');
   S.history = all;
   all.forEach((m) => {
     const li = document.createElement('li');
     const info = document.createElement('div');
-    info.append(ink(m.subject || '未填代號'));
+    info.append(ink(m.subject || tr('未填代號')));
     const small = document.createElement('small');
-    small.textContent = `${new Date(m.startedAt).toLocaleString()}　${m.summary?.minutes ?? '—'} 分　${m.source}${m.status === 'complete' ? '' : '　未完成'}`;
+    small.textContent = `${new Date(m.startedAt).toLocaleString(locale())}　${tr('{0} 分', m.summary?.minutes ?? '—')}　${tr(m.source)}${m.status === 'complete' ? '' : `　${tr('未完成')}`}`;
     info.append(small);
     const row = document.createElement('div');
     row.className = 'row-actions';
     const btn = (t, fn) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => fn(b); row.append(b); };
-    if (m.summary) btn('查看', () => { S.lastMeta = m; S.resultNote = ''; go('results'); });
-    btn('匯出', () => runExport(m, false, st));
-    btn('刪除', async (b) => {
+    if (m.summary) btn(tr('查看'), () => { S.lastMeta = m; S.resultNote = ''; go('results'); });
+    btn(tr('匯出'), () => runExport(m, false, st));
+    btn(tr('刪除'), async (b) => {
       if (b.dataset.armed) { await deleteSession(m.id); renderHistory(); return; }
-      b.dataset.armed = 1; b.textContent = '確定刪除？';
-      setTimeout(() => { delete b.dataset.armed; b.textContent = '刪除'; }, 3000);
+      b.dataset.armed = 1; b.textContent = tr('確定刪除？');
+      setTimeout(() => { delete b.dataset.armed; b.textContent = tr('刪除'); }, 3000);
     });
     li.append(info, row);
     list.append(li);
   });
 }
 $('h-summary').onclick = async () => {
-  if (!S.history?.length) { $('hist-status').textContent = '還沒有紀錄。'; return; }
+  if (!S.history?.length) { $('hist-status').textContent = tr('還沒有紀錄。'); return; }
   await deliver(summaryCsv(S.history), 'summary.csv', false);
-  $('hist-status').textContent = '已匯出 summary.csv';
+  $('hist-status').textContent = tr('已匯出 summary.csv');
 };
 
+document.querySelector('.lang-bar').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  setLang(b.dataset.lang);
+  applyLang();
+  galaxy.relabel();
+  deviceChecks();
+  if (location.hash === '#settings') {
+    $('source-label').textContent = tr('已連線：{0}', tr(S.source?.name ?? ''));
+    paintDisplay(); // keeps anything typed but not yet saved
+  } else route();
+});
+
+applyLang();
 deviceChecks();
 route();
 window.__bg = { S, galaxy }; // for inspection while testing
