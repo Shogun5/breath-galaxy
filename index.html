@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
 <canvas id="galaxy"></canvas>
@@ -64,6 +64,10 @@
       <label class="inline" id="sbs-row">3D 格式
         <select id="sbsFormat"><option value="auto">自動判斷</option><option value="full">全寬 SBS（32:9）</option><option value="half">半寬 SBS（16:9）</option></select>
       </label>
+    </fieldset>
+
+    <fieldset><legend>互動</legend>
+      <label class="check"><input type="checkbox" id="tilt"> 頭部晃動時，銀河跟著傾斜</label>
     </fieldset>
 
     <fieldset><legend>聲音</legend>

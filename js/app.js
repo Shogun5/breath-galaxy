@@ -7,7 +7,7 @@ import { hostRelay, joinRelay } from './relay.js';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
-const DEFAULTS = { minutes: 10, goal: 'relax', breath: 6, inhale: 40, display: 'flat', sbsFormat: 'auto', music: true, heart: true, subject: '', note: '', recordRaw: true };
+const DEFAULTS = { minutes: 10, goal: 'relax', breath: 6, inhale: 40, display: 'flat', sbsFormat: 'auto', music: true, heart: true, subject: '', note: '', recordRaw: true, tilt: true };
 const GOAL_LABEL = { relax: '放鬆', focus: '專注', coherence: '呼吸同調' };
 const GOAL_BAND = { relax: 2, focus: 3 };
 
@@ -81,10 +81,22 @@ const recording = () => S.rec && (S.phase === 'calib' || S.phase === 'session');
 function onPacket(p) {
   if (p.kind === 'eeg') { S.an.push(p.ch, p.samples); S.eeg.add(p.ch, p.seq, p.samples); }
   else if (p.kind === 'ppg') S.ppg.add(p.ch, p.seq, p.samples);
-  else if (recording() && S.settings.recordRaw) {
+  if (p.kind === 'accel') trackGravity(p.xyz[2]);
+  if ((p.kind === 'accel' || p.kind === 'gyro') && recording() && S.settings.recordRaw) {
     const t = performance.now() - S.t0;
     p.xyz.forEach((v, i) => S.rec.add('motion', `${(t + (i - 2) * 19.2).toFixed(1)},${p.kind},${v.map((x) => x.toFixed(4)).join(',')}`));
   }
+}
+
+// Low-passed accelerometer: how the head leans compared with the calibration posture.
+function trackGravity(v) {
+  S.g ??= [...v];
+  for (let i = 0; i < 3; i++) S.g[i] += (v[i] - S.g[i]) * 0.15;
+}
+const TILT_GAIN = 1.6, TILT_MAX = 0.5, TILT_DEAD = 0.012;
+function leanAngle(d) {
+  const v = Math.abs(d) < TILT_DEAD ? 0 : d;
+  return Math.max(-TILT_MAX, Math.min(TILT_MAX, v * TILT_GAIN));
 }
 
 function onBeat(t, ibi) {
@@ -95,7 +107,9 @@ function onBeat(t, ibi) {
   }
   const m = S.beats.ibi;
   if (!m) fireBeat();
-  S.nextBeat = t + (m || 1000);
+  // Visual timing uses arrival time: sample timestamps can drift from the wall clock.
+  S.lastBeatWall = performance.now();
+  S.nextBeat = S.lastBeatWall + (m || 1000) - 120;
 }
 function fireBeat() {
   galaxy.beat(1);
@@ -147,7 +161,7 @@ function fillSettings() {
   document.querySelectorAll('.seg').forEach(paintSeg);
   $('minutes-custom').value = [5, 10, 15].includes(v.minutes) ? '' : v.minutes;
   $('breath').value = v.breath; $('inhale').value = v.inhale;
-  for (const k of ['music', 'heart', 'recordRaw']) $(k).checked = v[k];
+  for (const k of ['music', 'heart', 'recordRaw', 'tilt']) $(k).checked = v[k];
   for (const k of ['subject', 'note', 'sbsFormat']) $(k).value = v[k];
   paintRanges(); paintDisplay();
 }
@@ -186,7 +200,7 @@ $('breath').oninput = (e) => { S.settings.breath = Number(e.target.value); paint
 $('inhale').oninput = (e) => { S.settings.inhale = Number(e.target.value); paintRanges(); };
 $('settings-form').onsubmit = async (e) => {
   e.preventDefault();
-  for (const k of ['music', 'heart', 'recordRaw']) S.settings[k] = $(k).checked;
+  for (const k of ['music', 'heart', 'recordRaw', 'tilt']) S.settings[k] = $(k).checked;
   for (const k of ['subject', 'note', 'sbsFormat']) S.settings[k] = $(k).value.trim();
   store.set(S.settings);
   await beginCalibration();
@@ -221,6 +235,7 @@ function finishCalibration() {
   if (S.calibDone) return;
   S.calibDone = true;
   const n = S.an.finishBaseline();
+  S.gNeutral = S.g ? [...S.g] : null;
   logEvent('calibration_end', `clean_frames=${n}`);
   $('btn-early').hidden = true;
   $('calib-count').textContent = '0';
@@ -284,7 +299,8 @@ function breathAt(el, st) {
   const cycle = 60 / st.breath, x = (el % cycle) / cycle, f = st.inhale / 100;
   const inhale = x < f, p = inhale ? x / f : (x - f) / (1 - f);
   const e = 0.5 - 0.5 * Math.cos(Math.PI * p);
-  return { inhale, p, cycle, radius: inhale ? 0.7 + 5.4 * e : 6.1 - 5.4 * e, dir: inhale ? 1 : -1, n: Math.floor(el / cycle) };
+  const level = inhale ? e : 1 - e; // 0 = dim at the core, 1 = light surrounds the galaxy
+  return { inhale, p, cycle, level, radius: 0.4 + 7 * level, n: Math.floor(el / cycle) };
 }
 const clock = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -298,7 +314,7 @@ function advance() {
 
 function visualTick(st, elapsed, paused) {
   const b = breathAt(elapsed, st);
-  galaxy.setBreath(b.radius, b.dir);
+  galaxy.setBreath(b.radius, b.level);
   sound.update(b.cycle, b.inhale, b.p, !paused);
   return b;
 }
@@ -312,7 +328,7 @@ galaxy.onFrame = () => {
     const b = visualTick(S.settings, S.elapsed, S.paused);
     const key = `${b.n}${b.inhale}`;
     if (key !== S.breathPhase) { S.breathPhase = key; logEvent(b.inhale ? 'breath_inhale' : 'breath_exhale'); }
-    if (S.beats.ibi && S.nextBeat && now >= S.nextBeat && now - S.beats.lastBeat < 4000) { fireBeat(); S.nextBeat += S.beats.ibi; }
+    if (S.beats.ibi && S.nextBeat && now >= S.nextBeat && now - S.lastBeatWall < 4000) { fireBeat(); S.nextBeat += S.beats.ibi; }
     if (now > hudAt) { hudAt = now + 200; drawHud(b); }
   } else if (S.follower?.running) {
     const f = S.follower;
@@ -327,7 +343,7 @@ galaxy.onFrame = () => {
     idleEnergy(now);
   } else if (S.phase === 'idle') {
     idleEnergy(now);
-    galaxy.setBreath(3, 1);
+    galaxy.setBreath(0.4, 0);
   }
 };
 const idle = new Float32Array(20);
@@ -373,7 +389,13 @@ setInterval(() => {
   if (hl !== undefined) for (let c = 0; c < 4; c++) shown[c * 5 + hl] = Math.min(1, e[c * 5 + hl] * 1.2);
   galaxy.setEnergy(shown);
   accumulate(z, f);
-  S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm });
+  let tx = 0, tz = 0;
+  if (S.settings.tilt && S.gNeutral && S.g) {
+    tx = leanAngle(S.g[0] - S.gNeutral[0]);
+    tz = leanAngle(S.g[1] - S.gNeutral[1]);
+  }
+  galaxy.setTilt(tx, tz);
+  S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm, x: tx, z: tz });
 }, 100);
 
 function accumulate(z, f) {
@@ -425,6 +447,7 @@ async function endSession(reason) {
   S.relay?.send({ t: 'end' });
   S.eeg.flush(); S.ppg.flush();
   $('session').hidden = true;
+  galaxy.setTilt(0, 0);
   galaxy.setSession(false);
   if (S.localMode === 'quest') galaxy.endXR();
   if (S.localMode === 'sbs') {
@@ -562,11 +585,13 @@ function followerMessage(f, m) {
   } else if (m.t === 'f') {
     galaxy.setEnergy(Float32Array.from(m.e, (x) => x / 255));
     f.paused = m.p; f.hr = m.hr;
+    galaxy.setTilt(m.x ?? 0, m.z ?? 0);
     if (Math.abs(f.elapsed - m.el) > 0.15) f.elapsed = m.el;
   } else if (m.t === 'beat') {
     galaxy.beat(1); sound.heartbeat();
   } else if (m.t === 'end') {
     f.running = false;
+    galaxy.setTilt(0, 0);
     galaxy.setSession(false);
     galaxy.endXR();
     sound.stop();

@@ -1,62 +1,87 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+const HIST_W = 64, HIST_H = 20;
+const FLAT_BG = 0x020308;
+const SPIN_PER_BEAT = 0.07, SPIN_DECAY = 3, SPIN_IDLE = 0.012;
+
+// Each arm is a live spectrogram. Along the arm: frequency (gamma inside, delta outside).
+// Across the arm: time (leading edge is now, trailing edge is about 6 s ago).
 const ARM_VS = /* glsl */`
-uniform float uTime, uE[20], uRipple, uPx, uMotion;
-attribute float aArm, aT, aSeed, aOff, aSize;
+uniform float uTime, uSpin, uRipple, uPx, uMotion, uHead, uBright, uWave;
+uniform sampler2D uHist;
+attribute float aArm, aT, aSeed, aG, aSize, aThick;
 varying vec3 vC; varying float vA;
+const float T = 64.0;
+float bandAt(float col, float row){ return texture2D(uHist, vec2(col, (row + 0.5) / 20.0)).r; }
 void main(){
   float t = aT;
   float b = (1.0 - t) * 4.0;
-  int i = int(min(floor(b), 3.0));
-  float f = b - float(i);
-  int ch = int(aArm);
-  float e = mix(uE[ch*5+i], uE[ch*5+i+1], f);
-  float r = 0.5 + 5.7 * pow(t, 0.85) + aOff * 0.55;
-  float a = aArm * 1.5707963 + t * 2.5 + aOff * 0.35 + uTime * 0.018 * (1.25 - t);
+  float i = min(floor(b), 3.0);
+  float f = b - i;
+  float row = aArm * 5.0 + i;
+  float w = aG * 0.5 + 0.5;
+  float col = (uHead - 1.0 - w * (T - 3.0) + 0.5) / T;
+  float e = mix(bandAt(col, row), bandAt(col, row + 1.0), f);
+  float width = 0.5 + t * 1.7;
+  float off = aG * width;
+  float r = 0.5 + 5.7 * pow(t, 0.85) + off * 0.55;
+  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 + uSpin * (1.2 - 0.33 * t);
   float rate = mix(16.0, 1.3, t);
-  float jump = sin(uTime * rate * uMotion + aSeed * 6.283) * (0.03 + e * e * (0.34 + 0.5 * t));
+  float jump = sin(uTime * rate * uMotion + aSeed * 6.283) * (0.02 + e * e * (0.3 + 0.45 * t));
   float d = r - uRipple;
-  float ring = exp(-d * d * 3.0);
-  vec3 p = vec3(cos(a) * r, jump + aOff * 0.12 + ring * 0.14, sin(a) * r);
+  float lit = smoothstep(0.9, -0.9, d) * uWave; // stars inside the breath light are gently lifted
+  float spread = 0.35 * (r * 0.35 + 0.3);
+  vec3 p = vec3(cos(a) * r, jump + aThick, sin(a) * r) + position * spread;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp(aSize * (0.55 + 1.5 * e) * uPx / max(0.6, -mv.z), 1.0, 26.0);
-  vec3 outer = vec3(0.26, 0.17, 0.78), mid = vec3(0.55, 0.36, 0.96), inner = vec3(0.88, 0.82, 1.0);
-  vC = t > 0.5 ? mix(mid, outer, (t - 0.5) * 2.0) : mix(inner, mid, t * 2.0);
-  vC += vec3(1.0, 0.45, 0.35) * ring * 0.45;
-  vA = (0.14 + 0.55 * e) * (0.75 + 0.25 * sin(aSeed * 40.0));
+  gl_PointSize = clamp(aSize * (0.55 + 1.3 * e) * uPx / max(0.6, -mv.z), 1.0, 40.0);
+  float k = pow(t, 0.55);
+  vec3 core = vec3(1.0, 0.86, 0.68) * 0.95, mid = vec3(1.0, 0.54, 0.30) * 1.0, outer = vec3(0.31, 0.49, 1.0) * 1.3;
+  vC = mix(mix(core, mid, smoothstep(0.0, 0.35, k)), outer, smoothstep(0.3, 0.85, k));
+  vC *= 1.0 + lit * 0.22;
+  vA = smoothstep(-0.1, 0.45, t) * (0.07 + 0.42 * e) * (0.75 + 0.25 * sin(aSeed * 40.0));
 }`;
 const SOFT_FS = /* glsl */`
+uniform float uBright;
 varying vec3 vC; varying float vA;
 void main(){
-  float d = length(gl_PointCoord - 0.5);
-  float s = smoothstep(0.5, 0.0, d);
-  gl_FragColor = vec4(vC, vA * s * s);
+  float d = max(1.0 - length(gl_PointCoord - 0.5) * 2.0, 0.0);
+  float s = pow(d, 2.2);
+  gl_FragColor = vec4(vC * uBright, vA * s);
 }`;
-const RING_VS = /* glsl */`
-uniform float uRipple, uDir, uPx, uShow;
-attribute float aAng, aEcho;
-varying vec3 vC; varying float vA;
+// Breath light: a soft ball that grows over the galaxy on the inhale and sinks to the core on the exhale.
+const BREATH_VS = /* glsl */`
+varying vec3 vN, vV;
 void main(){
-  float r = max(0.05, uRipple - uDir * aEcho * 0.42);
-  vec4 mv = modelViewMatrix * vec4(cos(aAng) * r, 0.05, sin(aAng) * r, 1.0);
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vN = normalize(normalMatrix * normal);
+  vV = normalize(-mv.xyz);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp((0.05 - aEcho * 0.01) * uPx / max(0.6, -mv.z), 1.0, 9.0);
-  vC = vec3(1.0, 0.45, 0.36);
-  vA = uShow * (0.85 - aEcho * 0.26);
+}`;
+const BREATH_FS = /* glsl */`
+uniform float uLevel, uWave;
+varying vec3 vN, vV;
+void main(){
+  float d = abs(dot(normalize(vN), normalize(vV)));
+  float a = pow(d, 2.4) * mix(0.008, 0.045, uLevel) * uWave;
+  gl_FragColor = vec4(vec3(1.0, 0.82, 0.66), a);
 }`;
 const HEART_VS = /* glsl */`
 uniform float uBeat, uPx, uTime;
 attribute float aSeed, aSize;
 varying vec3 vC; varying float vA;
 void main(){
-  float k = 1.0 + uBeat * 0.6;
+  float k = 1.0 + uBeat * 0.35;
   vec3 p = position * k;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = clamp(aSize * uPx * (1.0 + uBeat) / max(0.6, -mv.z), 1.0, 900.0);
-  vC = mix(vec3(1.0, 0.33, 0.42), vec3(1.0, 0.86, 0.78), clamp(1.0 - length(position) * 3.0, 0.0, 1.0));
-  vA = aSize > 0.3 ? 0.16 + uBeat * 0.5 : 0.42 + uBeat * 0.5;
+  gl_PointSize = clamp(aSize * uPx * (1.0 + uBeat * 0.35) / max(0.6, -mv.z), 1.0, 900.0);
+  vC = mix(vec3(1.0, 0.33, 0.42), vec3(1.0, 0.86, 0.78), clamp(1.0 - length(position) * 3.0, 0.0, 1.0)) * 1.2;
+  vA = aSize > 0.3 ? 0.035 + uBeat * 0.07 : 0.16 + uBeat * 0.22;
 }`;
 
 export class Galaxy {
@@ -70,6 +95,14 @@ export class Galaxy {
   #yaw = 0; #pitch = 0;
   #beat = 0;
   #snapLatch = false;
+  #spinVel = 0;
+  #tiltTarget = [0, 0];
+  #tilt = [0, 0];
+  #baseTilt = 0;
+  #head = 0;
+  #pushedAt = 0;
+  #slow = 0; #frames = 0; #frameT = 0;
+  useBloom = true;
   #btn = {};
 
   constructor(canvas) {
@@ -77,7 +110,7 @@ export class Galaxy {
     const quest = /OculusBrowser|Quest/i.test(navigator.userAgent);
     this.count = quest ? 60000 : coarse ? 36000 : 100000;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
-    this.renderer.setClearColor(0x0b0d10);
+    this.renderer.setClearColor(FLAT_BG);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.5 : 2));
     this.renderer.xr.enabled = true;
     this.renderer.autoClear = true;
@@ -90,14 +123,28 @@ export class Galaxy {
     this.rig.add(this.camera);
     this.scene.add(this.rig);
     this.stereo = new THREE.StereoCamera();
-    this.stereo.eyeSep = 0.14;
+    this.stereo.eyeSep = 0.9;
     this.shared = {
       uTime: { value: 0 },
       uRipple: { value: 3 },
       uPx: { value: 500 },
+      uBright: { value: 0.55 },
+      uSpin: { value: 0 },
     };
-    this.motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.25 : 1;
+    this.motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.5 : 1;
+    this.history = new Uint8Array(HIST_W * HIST_H).fill(70);
+    this.histTex = new THREE.DataTexture(this.history, HIST_W, HIST_H, THREE.RedFormat, THREE.UnsignedByteType);
+    this.histTex.magFilter = this.histTex.minFilter = THREE.LinearFilter;
+    this.histTex.wrapS = THREE.RepeatWrapping;
+    this.histTex.needsUpdate = true;
+    this.energy = new Float32Array(20).fill(0.3);
     this.#build();
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.composer = new EffectComposer(this.renderer, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType }));
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.4, 0.55);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());
     this.#hud();
     this.resetView();
     addEventListener('resize', () => this.resize());
@@ -109,43 +156,42 @@ export class Galaxy {
   #build() {
     const n = this.count;
     const pos = new Float32Array(n * 3);
-    const arm = new Float32Array(n), tt = new Float32Array(n), seed = new Float32Array(n), off = new Float32Array(n), size = new Float32Array(n);
+    const arm = new Float32Array(n), tt = new Float32Array(n), seed = new Float32Array(n), gw = new Float32Array(n), size = new Float32Array(n), thick = new Float32Array(n);
     const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
     for (let i = 0; i < n; i++) {
       arm[i] = i % 4;
-      tt[i] = Math.pow(Math.random(), 0.8);
+      tt[i] = Math.pow(Math.random(), 1.25);
       seed[i] = Math.random();
-      off[i] = gauss() * (0.5 + tt[i] * 1.7);
-      size[i] = 0.018 + Math.random() ** 3 * 0.05;
+      gw[i] = gauss();
+      const r = 0.5 + 5.7 * Math.pow(tt[i], 0.85);
+      thick[i] = gauss() * (0.1 + 0.5 * Math.exp(-r * 0.8)); // thicker bulge near the centre
+      const k = Math.pow(Math.random(), 2.5); // a few strays fill the space between arms
+      pos.set([gauss() * k * 2.2, gauss() * k * 0.5, gauss() * k * 2.2], i * 3);
+      size[i] = 0.025 + Math.random() ** 6 * 0.09;
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('aArm', new THREE.BufferAttribute(arm, 1));
     g.setAttribute('aT', new THREE.BufferAttribute(tt, 1));
     g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
-    g.setAttribute('aOff', new THREE.BufferAttribute(off, 1));
+    g.setAttribute('aG', new THREE.BufferAttribute(gw, 1));
+    g.setAttribute('aThick', new THREE.BufferAttribute(thick, 1));
     g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
     const blend = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
     this.armMat = new THREE.ShaderMaterial({
       ...blend, vertexShader: ARM_VS, fragmentShader: SOFT_FS,
-      uniforms: { ...this.shared, uE: { value: new Float32Array(20).fill(0.3) }, uMotion: { value: this.motion } },
+      uniforms: { ...this.shared, uHist: { value: this.histTex }, uHead: { value: 0 }, uWave: { value: 0 }, uMotion: { value: this.motion } },
     });
     this.world.add(new THREE.Points(g, this.armMat));
 
-    const rn = 2160;
-    const ang = new Float32Array(rn), echo = new Float32Array(rn);
-    for (let i = 0; i < rn; i++) { ang[i] = (i / 720) * Math.PI * 2; echo[i] = Math.floor(i / 720); }
-    const rg = new THREE.BufferGeometry();
-    rg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rn * 3), 3));
-    rg.setAttribute('aAng', new THREE.BufferAttribute(ang, 1));
-    rg.setAttribute('aEcho', new THREE.BufferAttribute(echo, 1));
-    rg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
-    this.ringMat = new THREE.ShaderMaterial({
-      ...blend, vertexShader: RING_VS, fragmentShader: SOFT_FS,
-      uniforms: { uRipple: this.shared.uRipple, uPx: this.shared.uPx, uDir: { value: 1 }, uShow: { value: 0 } },
+    this.breathMat = new THREE.ShaderMaterial({
+      ...blend, side: THREE.BackSide, depthTest: false, vertexShader: BREATH_VS, fragmentShader: BREATH_FS,
+      uniforms: { uLevel: { value: 0 }, uWave: this.armMat.uniforms.uWave },
     });
-    this.world.add(new THREE.Points(rg, this.ringMat));
+    this.breathBall = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), this.breathMat);
+    this.breathBall.frustumCulled = false;
+    this.world.add(this.breathBall);
 
     const hn = 1800;
     const hp = new Float32Array((hn + 1) * 3), hs = new Float32Array(hn + 1), hseed = new Float32Array(hn + 1);
@@ -163,7 +209,7 @@ export class Galaxy {
     hg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 5);
     this.heartMat = new THREE.ShaderMaterial({
       ...blend, vertexShader: HEART_VS, fragmentShader: SOFT_FS,
-      uniforms: { uBeat: { value: 0 }, uPx: this.shared.uPx, uTime: this.shared.uTime },
+      uniforms: { uBeat: { value: 0 }, uPx: this.shared.uPx, uTime: this.shared.uTime, uBright: this.shared.uBright },
     });
     this.world.add(new THREE.Points(hg, this.heartMat));
 
@@ -231,16 +277,37 @@ export class Galaxy {
     this.mode = mode;
     if (sbsFormat) this.sbsFormat = sbsFormat;
     const immersive = mode !== 'flat';
-    this.renderer.setClearColor(immersive ? 0x000000 : 0x0b0d10);
+    this.renderer.setClearColor(immersive ? 0x000000 : FLAT_BG);
+    this.#syncBright();
     this.stars.visible = mode !== 'sbs'; // on additive glasses, keep the room visible behind the galaxy
     this.hud.visible = immersive;
     this.resize();
   }
 
-  setSession(active) { this.ringMat.uniforms.uShow.value = active ? 1 : 0; }
-  setEnergy(e) { this.armMat.uniforms.uE.value.set(e); }
-  setBreath(radius, dir) { this.shared.uRipple.value = radius; this.ringMat.uniforms.uDir.value = dir; }
-  beat(strength = 1) { this.#beat = Math.max(this.#beat, strength); }
+  setSession(active) { this.waveTarget = active ? 1 : 0; }
+  #syncBright() { this.shared.uBright.value = this.mode === 'flat' && this.useBloom ? 0.55 : 0.62; }
+
+  // Adds one time column to the spectrogram (about 10 per second).
+  setEnergy(e) {
+    const now = performance.now();
+    if (now - this.#pushedAt < 85) return;
+    this.#pushedAt = now;
+    this.energy.set(e);
+    this.#head = (this.#head + 1) % HIST_W;
+    for (let i = 0; i < HIST_H; i++) this.history[i * HIST_W + this.#head] = Math.round(e[i] * 255);
+    this.histTex.needsUpdate = true;
+  }
+
+  setTilt(x, z) { this.#tiltTarget = [x * this.motion, z * this.motion]; }
+  setBreath(radius, level = 0) {
+    this.shared.uRipple.value = radius;
+    this.breathBall.scale.setScalar(radius);
+    this.breathMat.uniforms.uLevel.value = level;
+  }
+  beat(strength = 1) {
+    this.#beat = Math.max(this.#beat, strength);
+    this.#spinVel += SPIN_PER_BEAT * SPIN_DECAY * this.motion; // one heartbeat turns the galaxy by a fixed angle
+  }
 
   resize() {
     const w = innerWidth, h = innerHeight;
@@ -250,6 +317,8 @@ export class Galaxy {
     if (this.mode === 'sbs') this.camera.aspect = this.#sbsFull() ? (w / 2) / h : w / h;
     this.camera.updateProjectionMatrix();
     this.shared.uPx.value = h * this.renderer.getPixelRatio() * 0.95;
+    this.composer?.setPixelRatio(this.renderer.getPixelRatio());
+    this.composer?.setSize(w, h);
   }
 
   #sbsFull() {
@@ -264,11 +333,11 @@ export class Galaxy {
     this.renderer.xr.setFoveation(0.6);
     await this.renderer.xr.setSession(session);
     this.setMode('xr');
-    this.world.rotation.x = 0.45;
+    this.#baseTilt = 0.45;
     this.resetView();
     this.shared.uPx.value = 900;
     session.addEventListener('end', () => {
-      this.world.rotation.x = 0;
+      this.#baseTilt = 0;
       this.setMode('flat');
       this.resetView();
       this.onXREnd();
@@ -324,6 +393,15 @@ export class Galaxy {
   #loop() {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.shared.uTime.value += dt;
+    this.shared.uSpin.value += (SPIN_IDLE * this.motion + this.#spinVel) * dt;
+    this.#spinVel *= Math.exp(-dt * SPIN_DECAY);
+    this.armMat.uniforms.uHead.value = this.#head + Math.min(1, (performance.now() - this.#pushedAt) / 100);
+    for (let i = 0; i < 2; i++) this.#tilt[i] += (this.#tiltTarget[i] - this.#tilt[i]) * Math.min(1, dt * 3);
+    this.world.rotation.x = this.#baseTilt + this.#tilt[0];
+    this.world.rotation.z = this.#tilt[1];
+    const wave = this.armMat.uniforms.uWave;
+    wave.value += ((this.waveTarget ?? 0) - wave.value) * Math.min(1, dt * 1.5);
+    this.#watchSpeed(dt);
     this.#beat *= Math.exp(-dt * 5.5);
     this.heartMat.uniforms.uBeat.value = this.#beat;
     this.#pollXR();
@@ -335,6 +413,7 @@ export class Galaxy {
       this.scene.updateMatrixWorld();
       this.camera.updateWorldMatrix(true, false);
       this.stereo.aspect = 1;
+      this.camera.focus = Math.max(3, this.rig.position.length()); // galaxy centre sits at screen depth
       this.stereo.update(this.camera);
       r.setScissorTest(true);
       r.setScissor(0, 0, w / 2, h); r.setViewport(0, 0, w / 2, h);
@@ -342,8 +421,21 @@ export class Galaxy {
       r.setScissor(w / 2, 0, w / 2, h); r.setViewport(w / 2, 0, w / 2, h);
       r.render(this.scene, this.stereo.cameraR);
       r.setScissorTest(false);
+    } else if (this.mode === 'flat' && this.useBloom && !r.xr.isPresenting) {
+      this.composer.render(dt);
     } else {
       r.render(this.scene, this.camera);
     }
+  }
+
+  // Bloom is the costliest step; a phone that cannot hold the frame rate drops it.
+  #watchSpeed(dt) {
+    if (!this.useBloom || this.mode !== 'flat' || document.hidden) return;
+    this.#frameT += dt; this.#frames++;
+    if (this.#frameT < 2) return;
+    const fps = this.#frames / this.#frameT;
+    this.#frameT = 0; this.#frames = 0;
+    this.#slow = fps < 26 ? this.#slow + 1 : 0;
+    if (this.#slow >= 3) { this.useBloom = false; this.#syncBright(); }
   }
 }
