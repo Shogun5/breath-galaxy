@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=7';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
@@ -11,7 +12,8 @@ const SPIN_PER_BEAT = 0.07, SPIN_DECAY = 3, SPIN_IDLE = 0.012;
 // Each arm is a live spectrogram. Along the arm: frequency (gamma inside, delta outside).
 // Across the arm: time (leading edge is now, trailing edge is about 6 s ago).
 const ARM_VS = /* glsl */`
-uniform float uTime, uSpin, uRipple, uPx, uMotion, uHead, uBright, uWave, uFocus;
+uniform float uTime, uSpin, uRipple, uPx, uMotion, uHead, uBright, uWave, uFocus, uBrain;
+uniform vec3 uElec[4];
 uniform sampler2D uHist;
 attribute float aArm, aT, aSeed, aG, aSize, aThick;
 varying vec3 vC; varying float vA;
@@ -35,10 +37,25 @@ void main(){
   float rate = mix(16.0, 1.3, t);
   float jump = sin(uTime * rate * uMotion + aSeed * 6.283) * (0.02 + e * e * (0.3 + 0.45 * t));
   jump += sin(uTime * (3.0 + aSeed * 19.0) * uMotion + aSeed * 50.0) * chaos * chaos * 0.24;
-  float d = r - uRipple;
+  float d = mix(r, t * length(uElec[int(aArm)]), uBrain) - uRipple;
   float lit = smoothstep(0.9, -0.9, d) * uWave; // stars inside the breath light are gently lifted
   float spread = 0.35 * (r * 0.35 + 0.3);
   vec3 p = vec3(cos(a) * r, jump + aThick, sin(a) * r) + position * spread;
+  if (uBrain > 0.001) {
+    // Arm runs from the pineal gland (origin) straight to its sensor, twisting with the heartbeat.
+    vec3 E = uElec[int(aArm)];
+    float L = length(E) * (1.0 - 0.12 * uFocus);
+    vec3 dir = normalize(E);
+    vec3 u = normalize(cross(dir, vec3(0.13, 1.0, 0.21)));
+    vec3 v = cross(dir, u);
+    float tw = t * 3.2 - uSpin;
+    vec3 across = u * cos(tw) + v * sin(tw);
+    vec3 normal2 = cross(dir, across);
+    float side = mod(aArm, 2.0) < 1.0 ? 1.0 : -1.0;
+    vec3 q = dir * (0.15 + t * L) + u * sin(3.14159 * t) * 0.75 * side
+      + across * off * (0.3 + t * 0.3) + normal2 * (jump * 0.6 + aThick * 0.25) + position * spread * 0.4;
+    p = mix(p, q, uBrain);
+  }
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
   gl_PointSize = clamp(aSize * (0.55 + 1.3 * e) * uPx / max(0.6, -mv.z), 1.0, 40.0);
@@ -119,6 +136,9 @@ export class Galaxy {
   #pushedAt = 0;
   #slow = 0; #frames = 0; #frameT = 0;
   useBloom = true;
+  view = 'galaxy';
+  #brainTarget = 0;
+  #labelAt = 0;
   #btn = {};
 
   constructor(canvas) {
@@ -198,7 +218,7 @@ export class Galaxy {
     const blend = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
     this.armMat = new THREE.ShaderMaterial({
       ...blend, vertexShader: ARM_VS, fragmentShader: SOFT_FS,
-      uniforms: { ...this.shared, uHist: { value: this.histTex }, uHead: { value: 0 }, uWave: { value: 0 }, uFocus: { value: 0 }, uMotion: { value: this.motion } },
+      uniforms: { ...this.shared, uHist: { value: this.histTex }, uHead: { value: 0 }, uWave: { value: 0 }, uFocus: { value: 0 }, uBrain: { value: 0 }, uElec: { value: SENSORS.map((s) => s.pos) }, uMotion: { value: this.motion } },
     });
     this.world.add(new THREE.Points(g, this.armMat));
 
@@ -273,15 +293,61 @@ export class Galaxy {
 
   resetView() {
     this.#vel.set(0, 0, 0);
+    const brain = this.view === 'brain';
     if (this.mode === 'xr') {
-      this.rig.position.set(0, 1.2, 9.5);
-      this.rig.rotation.set(0, 0, 0);
+      this.rig.position.set(0, brain ? 0.6 : 1.2, brain ? -11 : 9.5);
+      this.rig.rotation.set(0, brain ? Math.PI : 0, 0);
     } else {
-      this.rig.position.set(0, 7, 13);
-      this.#yaw = 0;
-      this.#pitch = Math.atan2(-7, 13);
-      this.rig.rotation.set(this.#pitch, 0, 0);
+      const narrow = this.camera.aspect < 0.8 ? 0.6 : 1;
+      this.labels?.forEach((l) => l.scale.set(0.3 * narrow, 0.094 * narrow, 1));
+      const fit = brain ? Math.min(1.8, Math.max(1, 1 / this.camera.aspect)) : 1; // narrow screens step back so every sensor stays in view
+      const [x, y, z] = (brain ? [0, 8, -17.5] : [0, 7, 13]).map((v) => v * fit);
+      this.rig.position.set(x, y, z);
+      this.#yaw = Math.atan2(x, z);
+      this.#pitch = Math.atan2(-y, Math.hypot(x, z));
+      this.rig.rotation.set(this.#pitch, this.#yaw, 0);
     }
+  }
+
+  setView(view) {
+    if (view === this.view) return;
+    this.view = view;
+    this.#brainTarget = view === 'brain' ? 1 : 0;
+    if (view === 'brain' && !this.brain) this.#buildBrain();
+    this.resetView();
+  }
+
+  #buildBrain() {
+    const coarse = matchMedia('(pointer:coarse)').matches;
+    this.brain = buildBrain(coarse ? 44 : 90);
+    this.world.add(this.brain.group);
+    this.labels = SENSORS.map((s) => {
+      const tag = makeLabel(`${s.id} ${s.place}`);
+      tag.position.copy(s.pos).multiplyScalar(1.22);
+      tag.position.y += 0.5;
+      this.world.add(tag);
+      return tag;
+    });
+    this.markers = SENSORS.map((s) => {
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffb7a8, transparent: true, depthWrite: false }));
+      dot.position.copy(s.pos);
+      this.world.add(dot);
+      return dot;
+    });
+  }
+
+  #updateLabels() {
+    const now = performance.now();
+    if (!this.labels || now - this.#labelAt < 500) return;
+    this.#labelAt = now;
+    const names = ['δ', 'θ', 'α', 'β', 'γ'];
+    const live = (this.waveTarget ?? 0) > 0;
+    this.labels.forEach((tag, c) => {
+      let best = 0;
+      for (let b = 1; b < 5; b++) if (this.energy[c * 5 + b] > this.energy[c * 5 + best]) best = b;
+      const v = this.energy[c * 5 + best];
+      tag.userData.setText(!live ? '' : v < 0.55 ? '平穩' : `${names[best]} 偏強`);
+    });
   }
 
   look(dx, dy) {
@@ -356,7 +422,7 @@ export class Galaxy {
     this.renderer.xr.setFoveation(0.6);
     await this.renderer.xr.setSession(session);
     this.setMode('xr');
-    this.#baseTilt = 0.45;
+    this.#baseTilt = this.view === 'brain' ? 0 : 0.45;
     this.resetView();
     this.shared.uPx.value = 900;
     session.addEventListener('end', () => {
@@ -410,7 +476,7 @@ export class Galaxy {
     want.multiplyScalar(2.6);
     this.#vel.lerp(want, Math.min(1, dt * 3.5));
     this.rig.position.addScaledVector(this.#vel, dt);
-    if (this.rig.position.length() > 18) this.rig.position.setLength(18);
+    if (this.rig.position.length() > 45) this.rig.position.setLength(45);
   }
 
   #loop() {
@@ -424,6 +490,16 @@ export class Galaxy {
     this.world.rotation.z = this.#tilt[1];
     const wave = this.armMat.uniforms.uWave;
     wave.value += ((this.waveTarget ?? 0) - wave.value) * Math.min(1, dt * 1.5);
+    const bu = this.armMat.uniforms.uBrain;
+    bu.value += (this.#brainTarget - bu.value) * Math.min(1, dt * 2.5);
+    if (this.brain) {
+      this.brain.material.uniforms.uFade.value = bu.value;
+      const show = bu.value > 0.5;
+      this.brain.group.visible = bu.value > 0.01;
+      this.labels.forEach((l) => { l.visible = show; });
+      this.markers.forEach((m) => { m.visible = show; });
+      this.#updateLabels();
+    }
     this.#watchSpeed(dt);
     this.#beat *= Math.exp(-dt * 5.5);
     this.heartMat.uniforms.uBeat.value = this.#beat;

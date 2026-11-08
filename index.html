@@ -6,7 +6,7 @@
 <title>星息 Breath Galaxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -20,6 +20,7 @@
     <div class="actions">
       <button class="primary" id="btn-muse">連接 Muse 2</button>
       <button id="btn-sim">使用模擬資料</button>
+      <button id="btn-sim-brain">模擬：大腦視角</button>
     </div>
     <p class="status" id="connect-status" role="status"></p>
     <div class="links">
@@ -55,6 +56,12 @@
       <input type="range" id="breath" min="4" max="10" step="0.5" aria-label="呼吸頻率"></div>
       <div class="range-row"><output class="mid-num" id="ratio-out"></output><span class="unit">吸：吐</span>
       <input type="range" id="inhale" min="30" max="50" step="5" aria-label="吸氣比例"></div>
+    </fieldset>
+
+    <fieldset><legend>場景</legend>
+      <div class="seg" data-key="view">
+        <button type="button" data-v="galaxy">銀河</button><button type="button" data-v="brain">大腦視角</button>
+      </div>
     </fieldset>
 
     <fieldset><legend>顯示</legend>
@@ -166,6 +173,14 @@
         <div><dt>放射光芒</dt><dd>呼吸引導：吸氣時光芒向外延伸，吐氣時變暗並收回中心。</dd></div>
     </dl>
 
+    <h3>大腦視角</h3>
+    <dl class="legend-list">
+        <div><dt>中心</dt><dd>位於大腦中央，亮點一樣隨心跳脈動。這只是視覺上的中心，Muse 並沒有測量這個位置。</dd></div>
+        <div><dt>四條旋臂</dt><dd>各自連到一個感測點：TP9 左耳後、AF7 左前額、AF8 右前額、TP10 右耳後。靠中心是高頻，靠感測點是低頻。</dd></div>
+        <div><dt>標籤文字</dt><dd>顯示該感測點目前相對最強的頻段，「平穩」表示沒有明顯偏強。</dd></div>
+        <div><dt>限制</dt><dd>頭皮腦波訊號會擴散，只能說是「感測點附近」的活動，無法定位到某個深部腦區。大腦造型是示意，不是精確解剖。</dd></div>
+    </dl>
+
     <h3>不同狀態通常的樣子</h3>
     <div class="state-table" role="table" aria-label="狀態對照">
       <div role="row" class="head"><span role="columnheader">狀態</span><span role="columnheader">腦波傾向</span><span role="columnheader">銀河</span></div>
@@ -224,6 +239,6 @@
   </div>
 </section>
 
-<script type="module" src="js/app.js?v=6"></script>
+<script type="module" src="js/app.js?v=7"></script>
 </body>
 </html>

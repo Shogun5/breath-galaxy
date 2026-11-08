@@ -1,13 +1,13 @@
-import { Galaxy } from './galaxy.js?v=6';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=6';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=6';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=6';
-import { Soundscape } from './audio.js?v=6';
-import { hostRelay, joinRelay } from './relay.js?v=6';
+import { Galaxy } from './galaxy.js?v=7';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=7';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=7';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=7';
+import { Soundscape } from './audio.js?v=7';
+import { hostRelay, joinRelay } from './relay.js?v=7';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
-const DEFAULTS = { minutes: 10, goal: 'relax', breath: 6, inhale: 40, display: 'flat', sbsFormat: 'auto', music: true, heart: true, subject: '', note: '', recordRaw: true, tilt: true };
+const DEFAULTS = { minutes: 10, goal: 'relax', breath: 6, inhale: 40, display: 'flat', sbsFormat: 'auto', music: true, heart: true, subject: '', note: '', recordRaw: true, tilt: true, view: 'galaxy' };
 const GOAL_LABEL = { relax: '放鬆', focus: '專注', coherence: '呼吸同調' };
 const GOAL_BAND = { relax: 2, focus: 3 };
 
@@ -137,7 +137,16 @@ async function onDisconnect() {
 function note(t) { $('h-notice').textContent = t; if (S.phase === 'calib') $('calib-status').textContent = t; if (S.settings.display !== 'flat' && t) S.hudNote = t; }
 function logEvent(type, detail) { if (S.rec) S.rec.event(performance.now() - S.t0, type, detail); }
 
-$('btn-sim').onclick = async () => { const s = new SimSource(); attach(s); await s.connect(); go('settings'); };
+const startSim = async (view) => {
+  S.settings.view = view;
+  galaxy.setView(view);
+  const s = new SimSource();
+  attach(s);
+  await s.connect();
+  go('settings');
+};
+$('btn-sim').onclick = () => startSim('galaxy');
+$('btn-sim-brain').onclick = () => startSim('brain');
 $('btn-muse').onclick = async () => {
   const st = $('connect-status');
   try {
@@ -164,6 +173,7 @@ function fillSettings() {
   for (const k of ['music', 'heart', 'recordRaw', 'tilt']) $(k).checked = v[k];
   for (const k of ['subject', 'note', 'sbsFormat']) $(k).value = v[k];
   paintRanges(); paintDisplay();
+  galaxy.setView(v.view);
 }
 function paintSeg(seg) {
   const cur = String(S.settings[seg.dataset.key]);
@@ -191,6 +201,7 @@ document.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click',
   if (seg.dataset.key === 'goal' && b.dataset.v === 'coherence') { S.settings.breath = 6; S.settings.inhale = 50; $('breath').value = 6; $('inhale').value = 50; paintRanges(); }
   paintSeg(seg);
   if (seg.dataset.key === 'display') paintDisplay();
+  if (seg.dataset.key === 'view') galaxy.setView(b.dataset.v);
 }));
 $('minutes-custom').oninput = (e) => {
   const n = Number(e.target.value);
@@ -613,6 +624,7 @@ $('btn-join').onclick = async () => {
 function followerMessage(f, m) {
   if (m.t === 'config') {
     f.settings = m.settings;
+    galaxy.setView(m.settings.view || 'galaxy');
     $('receive-status').textContent = '準備完成';
     $('btn-vr').hidden = false;
   } else if (m.t === 'go') {
