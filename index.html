@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>星息 Breath Galaxy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js"}}</script>
+</head>
+<body>
+<canvas id="galaxy"></canvas>
+
+<section class="screen" data-screen="home">
+  <div class="panel">
+    <p class="eyebrow">Muse 2 × WebXR</p>
+    <h1>星息</h1>
+    <p class="lede">讓腦波點亮銀河，跟著波紋呼吸。</p>
+    <div class="actions">
+      <button class="primary" id="btn-muse">連接 Muse 2</button>
+      <button id="btn-sim">使用模擬資料</button>
+    </div>
+    <p class="status" id="connect-status" role="status"></p>
+    <div class="links">
+      <button class="text" id="btn-receive">Quest 接收手機資料</button>
+      <a class="text" href="#history">歷史紀錄</a>
+    </div>
+    <ul class="checks" id="checks"></ul>
+    <p class="fine">本程式用於放鬆訓練與教學，非醫療器材，不作診斷。資料只存在此裝置。</p>
+  </div>
+</section>
+
+<section class="screen" data-screen="settings">
+  <form class="panel wide" id="settings-form">
+    <p class="eyebrow" id="source-label">已連線</p>
+    <h2>設定</h2>
+
+    <fieldset><legend>時間（分鐘）</legend>
+      <div class="seg" data-key="minutes" data-num>
+        <button type="button" data-v="5">5</button><button type="button" data-v="10">10</button><button type="button" data-v="15">15</button>
+      </div>
+      <label class="inline">自訂 <input type="number" id="minutes-custom" min="1" max="120" inputmode="numeric"></label>
+    </fieldset>
+
+    <fieldset><legend>目標</legend>
+      <div class="seg" data-key="goal">
+        <button type="button" data-v="relax">放鬆</button><button type="button" data-v="focus">專注</button><button type="button" data-v="coherence">呼吸同調</button>
+      </div>
+    </fieldset>
+
+    <fieldset><legend>呼吸頻率</legend>
+      <div class="range-row"><output class="big-num" id="breath-out"></output><span class="unit">次／分</span>
+      <input type="range" id="breath" min="4" max="10" step="0.5" aria-label="呼吸頻率"></div>
+      <div class="range-row"><output class="mid-num" id="ratio-out"></output><span class="unit">吸：吐</span>
+      <input type="range" id="inhale" min="30" max="50" step="5" aria-label="吸氣比例"></div>
+    </fieldset>
+
+    <fieldset><legend>顯示</legend>
+      <div class="seg" data-key="display">
+        <button type="button" data-v="flat">手機／電腦 3D</button><button type="button" data-v="sbs">XREAL One</button><button type="button" data-v="quest">Quest 3</button>
+      </div>
+      <p class="hint" id="display-hint"></p>
+      <label class="inline" id="sbs-row">3D 格式
+        <select id="sbsFormat"><option value="auto">自動判斷</option><option value="full">全寬 SBS（32:9）</option><option value="half">半寬 SBS（16:9）</option></select>
+      </label>
+    </fieldset>
+
+    <fieldset><legend>聲音</legend>
+      <label class="check"><input type="checkbox" id="music"> 生成音樂（節奏鎖定呼吸）</label>
+      <label class="check"><input type="checkbox" id="heart"> 心跳聲</label>
+    </fieldset>
+
+    <fieldset><legend>記錄</legend>
+      <label class="field">受試者代號（請勿填真實姓名）<input id="subject" maxlength="40" autocomplete="off" placeholder="例如 S01"></label>
+      <label class="field">備註<input id="note" maxlength="200" autocomplete="off"></label>
+      <label class="check"><input type="checkbox" id="recordRaw"> 記錄原始 EEG、PPG 與動作資料</label>
+    </fieldset>
+
+    <div class="actions"><button class="primary" type="submit">開始校準</button><a class="text" href="#home">返回</a></div>
+  </form>
+</section>
+
+<section class="screen" data-screen="calib">
+  <div class="panel">
+    <p class="eyebrow">訊號校準</p>
+    <h2>閉眼靜坐，<br>放鬆下顎。</h2>
+    <p class="big-num" id="calib-count">60</p>
+    <div class="quality" id="quality"></div>
+    <p class="status" id="calib-status" role="status"></p>
+    <div class="actions">
+      <button class="primary" id="btn-enter" disabled>校準中</button>
+      <button id="btn-early" disabled>提早完成</button>
+    </div>
+    <div id="relay-box" hidden>
+      <p class="hint">在 Quest 瀏覽器開啟同一網址，按「Quest 接收手機資料」，輸入：</p>
+      <p class="big-num" id="relay-code">------</p>
+      <p class="status" id="relay-status" role="status"></p>
+    </div>
+  </div>
+</section>
+
+<section class="screen" data-screen="receive">
+  <div class="panel">
+    <p class="eyebrow">Quest 接收</p>
+    <h2>輸入手機上的代碼</h2>
+    <label class="field">連線代碼<input id="receive-code" inputmode="numeric" maxlength="6" autocomplete="off"></label>
+    <div class="actions"><button class="primary" id="btn-join">連線</button><a class="text" href="#home">返回</a></div>
+    <button class="primary" id="btn-vr" hidden>進入 VR</button>
+    <p class="status" id="receive-status" role="status"></p>
+  </div>
+</section>
+
+<section class="layer" id="session" hidden>
+  <div class="hud-top">
+    <div><span class="timer" id="h-time">00:00</span></div>
+    <div class="hud-right"><span id="h-hr">— bpm</span><span id="h-rec" class="rec" hidden>REC</span></div>
+  </div>
+  <div class="hud-breath" id="h-breath" aria-live="off">吸氣</div>
+  <p class="notice" id="h-notice" role="status"></p>
+  <div class="hud-actions">
+    <button id="s-mark">標記</button><button id="s-pause">暫停</button><button id="s-reset">重設視角</button><button id="s-end">結束</button>
+  </div>
+  <div class="updown"><button id="s-up" aria-label="上升">上</button><button id="s-down" aria-label="下降">下</button></div>
+  <div class="knob" id="knob" hidden></div>
+</section>
+
+<section class="screen scroll" data-screen="results">
+  <div class="panel wide">
+    <p class="eyebrow" id="r-meta"></p>
+    <h2>本次結果</h2>
+    <div class="hero-stat"><span class="big-num" id="r-hero"></span><span class="unit" id="r-hero-label"></span></div>
+    <div class="stats" id="r-stats"></div>
+    <div class="charts" id="r-charts"></div>
+    <div class="actions">
+      <button class="primary" id="r-export">匯出 ZIP</button>
+      <button id="r-share" hidden>分享到…</button>
+      <a class="text" href="#history">歷史紀錄</a>
+      <a class="text" href="#home">回首頁</a>
+    </div>
+    <p class="status" id="r-status" role="status"></p>
+    <p class="fine">資料存在此瀏覽器，清除瀏覽器資料會一併刪除，請記得匯出。「呼吸」欄位是引導節奏，不是實測呼吸。</p>
+  </div>
+</section>
+
+<section class="screen scroll" data-screen="history">
+  <div class="panel wide">
+    <p class="eyebrow">本機資料</p>
+    <h2>歷史紀錄</h2>
+    <div class="actions"><button id="h-summary">批次匯出 summary.csv</button><a class="text" href="#home">回首頁</a></div>
+    <p class="status" id="hist-status" role="status"></p>
+    <ul class="history" id="hist-list"></ul>
+  </div>
+</section>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
