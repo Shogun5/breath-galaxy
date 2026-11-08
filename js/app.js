@@ -1,9 +1,9 @@
-import { Galaxy } from './galaxy.js?v=7';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=7';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=7';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=7';
-import { Soundscape } from './audio.js?v=7';
-import { hostRelay, joinRelay } from './relay.js?v=7';
+import { Galaxy } from './galaxy.js?v=9';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=9';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=9';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=9';
+import { Soundscape } from './audio.js?v=9';
+import { hostRelay, joinRelay } from './relay.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -82,6 +82,7 @@ function onPacket(p) {
   if (p.kind === 'eeg') { S.an.push(p.ch, p.samples); S.eeg.add(p.ch, p.seq, p.samples); }
   else if (p.kind === 'ppg') S.ppg.add(p.ch, p.seq, p.samples);
   if (p.kind === 'accel') trackGravity(p.xyz[2]);
+  if (p.kind === 'gyro') trackYaw(p.xyz);
   if ((p.kind === 'accel' || p.kind === 'gyro') && recording() && S.settings.recordRaw) {
     const t = performance.now() - S.t0;
     p.xyz.forEach((v, i) => S.rec.add('motion', `${(t + (i - 2) * 19.2).toFixed(1)},${p.kind},${v.map((x) => x.toFixed(4)).join(',')}`));
@@ -93,10 +94,25 @@ function trackGravity(v) {
   S.g ??= [...v];
   for (let i = 0; i < 3; i++) S.g[i] += (v[i] - S.g[i]) * 0.15;
 }
-const TILT_GAIN = 1.6, TILT_MAX = 0.5, TILT_DEAD = 0.012;
+const TILT_DEAD = 0.012;
 function leanAngle(d) {
+  const brain = S.settings.view === 'brain';
+  const gain = brain ? 1 : 1.6, max = brain ? 0.9 : 0.5; // brain follows the head one to one
   const v = Math.abs(d) < TILT_DEAD ? 0 : d;
-  return Math.max(-TILT_MAX, Math.min(TILT_MAX, v * TILT_GAIN));
+  return Math.max(-max, Math.min(max, v * gain));
+}
+
+// Gyroscope turn (z axis, degrees per second) integrated into a head-turn angle.
+// A slow leak pulls it back to centre, because integrated gyro drifts.
+const GYRO_DT = 1 / 52, YAW_MAX = 1.3, YAW_LEAK = 20, GYRO_DEAD = 1.5;
+function trackYaw(samples) {
+  for (const s of samples) {
+    if (S.phase === 'calib' && !S.calibDone) { S.gyroSum = (S.gyroSum || 0) + s[2]; S.gyroN = (S.gyroN || 0) + 1; }
+    const rate = s[2] - (S.gyroBias || 0);
+    S.yaw = (S.yaw || 0) * Math.exp(-GYRO_DT / YAW_LEAK);
+    if (Math.abs(rate) > GYRO_DEAD) S.yaw += (rate * Math.PI / 180) * GYRO_DT;
+    S.yaw = Math.max(-YAW_MAX, Math.min(YAW_MAX, S.yaw));
+  }
 }
 
 function onBeat(t, ibi) {
@@ -253,6 +269,8 @@ function finishCalibration() {
   S.calibDone = true;
   const n = S.an.finishBaseline();
   S.gNeutral = S.g ? [...S.g] : null;
+  S.gyroBias = S.gyroN ? S.gyroSum / S.gyroN : 0;
+  S.gyroSum = 0; S.gyroN = 0;
   logEvent('calibration_end', `clean_frames=${n}`);
   $('btn-early').hidden = true;
   $('calib-count').textContent = '0';
@@ -300,6 +318,7 @@ async function enterSession() {
   galaxy.setSession(true);
   S.phase = 'session';
   S.elapsed = 0; S.paused = false; S.last = performance.now();
+  S.yaw = 0;
   S.sum.startMs = S.last; S.sum.rowsStart = S.eegRows;
   S.breathPhase = null;
   logEvent('session_start', `display=${S.localMode}`);
@@ -409,13 +428,14 @@ setInterval(() => {
   const order = S.an.updateOrder(f, z);
   galaxy.setEnergy(shown, order.chaos, order.flick, order.focus);
   accumulate(z, f);
-  let tx = 0, tz = 0;
+  let tx = 0, tz = 0, ty = 0;
   if (S.settings.tilt && S.gNeutral && S.g) {
     tx = leanAngle(S.g[0] - S.gNeutral[0]);
     tz = leanAngle(S.g[1] - S.gNeutral[1]);
+    if (S.settings.view === 'brain') ty = S.yaw || 0;
   }
-  galaxy.setTilt(tx, tz);
-  S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm, x: tx, z: tz, c: Array.from(order.chaos), fl: Array.from(order.flick), fo: order.focus });
+  galaxy.setTilt(tx, tz, ty);
+  S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm, x: tx, z: tz, y: ty, c: Array.from(order.chaos), fl: Array.from(order.flick), fo: order.focus });
 }, 100);
 
 function accumulate(z, f) {
@@ -633,7 +653,7 @@ function followerMessage(f, m) {
   } else if (m.t === 'f') {
     galaxy.setEnergy(Float32Array.from(m.e, (x) => x / 255), m.c, m.fl, m.fo);
     f.paused = m.p; f.hr = m.hr;
-    galaxy.setTilt(m.x ?? 0, m.z ?? 0);
+    galaxy.setTilt(m.x ?? 0, m.z ?? 0, m.y ?? 0);
     if (Math.abs(f.elapsed - m.el) > 0.15) f.elapsed = m.el;
   } else if (m.t === 'beat') {
     galaxy.beat(1); sound.heartbeat();

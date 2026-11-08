@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=7';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=9';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
@@ -65,6 +65,7 @@ void main(){
   vC *= 1.0 + lit * 0.22;
   vA = smoothstep(-0.1, 0.45, t) * (0.1 + 0.5 * e) * (0.75 + 0.25 * sin(aSeed * 40.0));
   vA *= 1.0 + flick * smoothstep(0.75, 0.1, t) * (0.55 + 0.55 * sin(uTime * (24.0 + aSeed * 30.0) * uMotion + aSeed * 90.0));
+  vA *= 1.0 + 0.7 * uBrain;
   vA *= (1.0 - 0.45 * uFocus * smoothstep(0.35, 1.0, t)) * (1.0 + 0.4 * uFocus * smoothstep(0.5, 0.0, t));
 }`;
 const SOFT_FS = /* glsl */`
@@ -129,8 +130,8 @@ export class Galaxy {
   #beat = 0;
   #snapLatch = false;
   #spinVel = 0;
-  #tiltTarget = [0, 0];
-  #tilt = [0, 0];
+  #tiltTarget = [0, 0, 0];
+  #tilt = [0, 0, 0];
   #baseTilt = 0;
   #head = 0;
   #pushedAt = 0;
@@ -152,6 +153,7 @@ export class Galaxy {
     this.renderer.autoClear = true;
     this.scene = new THREE.Scene();
     this.world = new THREE.Group();
+    this.world.rotation.order = 'YXZ';
     this.scene.add(this.world);
     this.rig = new THREE.Group();
     this.rig.rotation.order = 'YXZ';
@@ -215,7 +217,7 @@ export class Galaxy {
     g.setAttribute('aThick', new THREE.BufferAttribute(thick, 1));
     g.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
     g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
-    const blend = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+    const blend = { transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }; // always drawn over the brain surface
     this.armMat = new THREE.ShaderMaterial({
       ...blend, vertexShader: ARM_VS, fragmentShader: SOFT_FS,
       uniforms: { ...this.shared, uHist: { value: this.histTex }, uHead: { value: 0 }, uWave: { value: 0 }, uFocus: { value: 0 }, uBrain: { value: 0 }, uElec: { value: SENSORS.map((s) => s.pos) }, uMotion: { value: this.motion } },
@@ -319,7 +321,8 @@ export class Galaxy {
 
   #buildBrain() {
     const coarse = matchMedia('(pointer:coarse)').matches;
-    this.brain = buildBrain(coarse ? 44 : 90);
+    this.brain = buildBrain(coarse || this.count === 40000 ? 'lo' : 'hi');
+    this.brain.ready.catch((e) => console.warn('brain model failed to load', e));
     this.world.add(this.brain.group);
     this.labels = SENSORS.map((s) => {
       const tag = makeLabel(`${s.id} ${s.place}`);
@@ -329,7 +332,7 @@ export class Galaxy {
       return tag;
     });
     this.markers = SENSORS.map((s) => {
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffb7a8, transparent: true, depthWrite: false }));
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffb7a8, transparent: true, depthWrite: false, depthTest: false }));
       dot.position.copy(s.pos);
       this.world.add(dot);
       return dot;
@@ -387,7 +390,11 @@ export class Galaxy {
     this.histTex.needsUpdate = true;
   }
 
-  setTilt(x, z) { this.#tiltTarget = [x * this.motion, z * this.motion]; }
+  // Pitch, roll and yaw in radians. In the brain view the model follows the head one to one.
+  setTilt(x, z, y = 0) {
+    const m = this.view === 'brain' ? 1 : this.motion;
+    this.#tiltTarget = [x * m, z * m, y * m];
+  }
   setBreath(radius, level = 0) {
     this.shared.uRipple.value = radius;
     this.breathMat.uniforms.uR.value = radius * 1.35;
@@ -485,9 +492,11 @@ export class Galaxy {
     this.shared.uSpin.value += (SPIN_IDLE * this.motion + this.#spinVel) * dt;
     this.#spinVel *= Math.exp(-dt * SPIN_DECAY);
     this.armMat.uniforms.uHead.value = this.#head + Math.min(1, (performance.now() - this.#pushedAt) / 100);
-    for (let i = 0; i < 2; i++) this.#tilt[i] += (this.#tiltTarget[i] - this.#tilt[i]) * Math.min(1, dt * 3);
+    const tiltRate = Math.min(1, dt * (this.view === 'brain' ? 7 : 3));
+    for (let i = 0; i < 3; i++) this.#tilt[i] += (this.#tiltTarget[i] - this.#tilt[i]) * tiltRate;
     this.world.rotation.x = this.#baseTilt + this.#tilt[0];
     this.world.rotation.z = this.#tilt[1];
+    this.world.rotation.y = this.#tilt[2];
     const wave = this.armMat.uniforms.uWave;
     wave.value += ((this.waveTarget ?? 0) - wave.value) * Math.min(1, dt * 1.5);
     const bu = this.armMat.uniforms.uBrain;

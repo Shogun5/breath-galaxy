@@ -6,7 +6,7 @@
 <title>星息 Breath Galaxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/style.css?v=9">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -75,7 +75,7 @@
     </fieldset>
 
     <fieldset><legend>互動</legend>
-      <label class="check"><input type="checkbox" id="tilt"> 頭部晃動時，銀河跟著傾斜</label>
+      <label class="check"><input type="checkbox" id="tilt"> 頭部動作帶動銀河或大腦的角度</label>
     </fieldset>
 
     <fieldset><legend>聲音</legend>
@@ -177,8 +177,10 @@
     <dl class="legend-list">
         <div><dt>中心</dt><dd>位於大腦中央，亮點一樣隨心跳脈動。這只是視覺上的中心，Muse 並沒有測量這個位置。</dd></div>
         <div><dt>四條旋臂</dt><dd>各自連到一個感測點：TP9 左耳後、AF7 左前額、AF8 右前額、TP10 右耳後。靠中心是高頻，靠感測點是低頻。</dd></div>
+        <div><dt>腦的角度</dt><dd>跟著您的頭轉動：前後、左右傾斜來自加速規，左右轉頭來自陀螺儀。轉頭角度會慢慢回正，避免累積誤差。</dd></div>
         <div><dt>標籤文字</dt><dd>顯示該感測點目前相對最強的頻段，「平穩」表示沒有明顯偏強。</dd></div>
-        <div><dt>限制</dt><dd>頭皮腦波訊號會擴散，只能說是「感測點附近」的活動，無法定位到某個深部腦區。大腦造型是示意，不是精確解剖。</dd></div>
+        <div><dt>限制</dt><dd>頭皮腦波訊號會擴散，只能說是「感測點附近」的活動，無法定位到某個深部腦區。</dd></div>
+        <div><dt>模型來源</dt><dd>Detailed Human Brain Model，Johnson J，NIH 3D（3DPX-021161），CC BY 4.0。為了網頁載入已簡化面數。</dd></div>
     </dl>
 
     <h3>不同狀態通常的樣子</h3>
@@ -239,6 +241,6 @@
   </div>
 </section>
 
-<script type="module" src="js/app.js?v=7"></script>
+<script type="module" src="js/app.js?v=9"></script>
 </body>
 </html>

@@ -218,6 +218,7 @@ export class SimSource {
     const t = seq * 0.058;
     const sway = [0.12 * Math.sin(t * 0.5), 0.15 * Math.sin(t * 0.33 + 1)];
     this.onPacket({ kind: 'accel', seq, xyz: [0, 1, 2].map(() => [sway[0] + r(), sway[1] + r(), 1 + r()]) });
-    this.onPacket({ kind: 'gyro', seq, xyz: [0, 1, 2].map(() => [r() * 40, r() * 40, r() * 40]) });
+    const turn = 12 * Math.sin(t * 0.4); // slow side-to-side head turn, degrees per second
+    this.onPacket({ kind: 'gyro', seq, xyz: [0, 1, 2].map(() => [r() * 40, r() * 40, turn + r() * 40]) });
   }
 }
