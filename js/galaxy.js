@@ -3,10 +3,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=9';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=10';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
+const BRAIN_CENTRE = new THREE.Vector3(0, 1.2, 0.7);
 const SPIN_PER_BEAT = 0.07, SPIN_DECAY = 3, SPIN_IDLE = 0.012;
 
 // Each arm is a live spectrogram. Along the arm: frequency (gamma inside, delta outside).
@@ -304,12 +305,29 @@ export class Galaxy {
       this.labels?.forEach((l) => l.scale.set(0.3 * narrow, 0.094 * narrow, 1));
       const fit = brain ? Math.min(1.8, Math.max(1, 1 / this.camera.aspect)) : 1; // narrow screens step back so every sensor stays in view
       const [x, y, z] = (brain ? [0, 8, -17.5] : [0, 7, 13]).map((v) => v * fit);
-      this.rig.position.set(x, y, z);
+      if (brain) this.rig.position.set(x, y, z).add(BRAIN_CENTRE);
+      else this.rig.position.set(x, y, z);
       this.#yaw = Math.atan2(x, z);
       this.#pitch = Math.atan2(-y, Math.hypot(x, z));
       this.rig.rotation.set(this.#pitch, this.#yaw, 0);
     }
   }
+
+  get #orbiting() { return this.view === 'brain' && this.mode !== 'xr'; }
+
+  // Moves the camera around the middle of the brain, always looking at it.
+  #orbit(dAz, dEl, zoom = 1) {
+    const v = this.rig.position.clone().sub(BRAIN_CENTRE);
+    const r = THREE.MathUtils.clamp(v.length() * zoom, 5, 45);
+    const az = Math.atan2(v.x, v.z) + dAz;
+    const el = THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(v.y / v.length(), -1, 1)) + dEl, -1.45, 1.45);
+    this.rig.position.set(Math.sin(az) * Math.cos(el) * r, Math.sin(el) * r, Math.cos(az) * Math.cos(el) * r).add(BRAIN_CENTRE);
+    this.#yaw = az;
+    this.#pitch = -el;
+    this.rig.rotation.set(this.#pitch, this.#yaw, 0);
+  }
+
+  zoom(deltaY) { if (this.#orbiting) this.#orbit(0, 0, Math.exp(deltaY * 0.001)); }
 
   setView(view) {
     if (view === this.view) return;
@@ -354,6 +372,7 @@ export class Galaxy {
   }
 
   look(dx, dy) {
+    if (this.#orbiting) { this.#orbit(-dx * 0.0055, dy * 0.0055); return; }
     this.#yaw -= dx * 0.0032;
     this.#pitch = Math.max(-1.45, Math.min(1.45, this.#pitch - dy * 0.0032));
     this.rig.rotation.set(this.#pitch, this.#yaw, 0);
@@ -476,6 +495,10 @@ export class Galaxy {
 
   #applyMove(dt) {
     const m = this.moveInput;
+    if (this.#orbiting) {
+      if (m.x || m.y || m.z) this.#orbit(m.x * dt * 1.1, m.y * dt * 0.9, Math.exp(m.z * dt * 0.9));
+      return;
+    }
     const cam = this.renderer.xr.isPresenting ? this.renderer.xr.getCamera() : this.camera;
     const q = cam.getWorldQuaternion(new THREE.Quaternion());
     const want = new THREE.Vector3(m.x, 0, m.z).applyQuaternion(q);

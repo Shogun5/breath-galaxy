@@ -1,9 +1,9 @@
-import { Galaxy } from './galaxy.js?v=9';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=9';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=9';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=9';
-import { Soundscape } from './audio.js?v=9';
-import { hostRelay, joinRelay } from './relay.js?v=9';
+import { Galaxy } from './galaxy.js?v=10';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=10';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=10';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=10';
+import { Soundscape } from './audio.js?v=10';
+import { hostRelay, joinRelay } from './relay.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -555,6 +555,11 @@ const release = (e) => {
   if (p?.isMove) { galaxy.moveInput.x = 0; galaxy.moveInput.z = 0; knob.hidden = true; }
   pointers.delete(e.pointerId);
 };
+layer.addEventListener('wheel', (e) => {
+  if (e.target.closest('#legend')) return;
+  e.preventDefault();
+  galaxy.zoom(e.deltaY);
+}, { passive: false });
 layer.addEventListener('pointerup', release);
 layer.addEventListener('pointercancel', release);
 
