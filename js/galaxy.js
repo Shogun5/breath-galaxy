@@ -3,8 +3,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { tr } from './i18n.js?v=14';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=14';
+import { tr } from './i18n.js?v=15';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=15';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
@@ -378,8 +378,8 @@ export class Galaxy {
 
   look(dx, dy) {
     if (this.#orbiting) { this.#orbit(-dx * 0.0055, dy * 0.0055); return; }
-    this.#yaw -= dx * 0.0032;
-    this.#pitch = Math.max(-1.45, Math.min(1.45, this.#pitch - dy * 0.0032));
+    this.#yaw += dx * 0.0032; // the scene follows the finger
+    this.#pitch = Math.max(-1.45, Math.min(1.45, this.#pitch + dy * 0.0032));
     this.rig.rotation.set(this.#pitch, this.#yaw, 0);
   }
 

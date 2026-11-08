@@ -1,10 +1,10 @@
-import { Galaxy } from './galaxy.js?v=14';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=14';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=14';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=14';
-import { Soundscape } from './audio.js?v=14';
-import { hostRelay, joinRelay } from './relay.js?v=14';
-import { tr, applyLang, setLang, locale } from './i18n.js?v=14';
+import { Galaxy } from './galaxy.js?v=15';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=15';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=15';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=15';
+import { Soundscape } from './audio.js?v=15';
+import { hostRelay, joinRelay } from './relay.js?v=15';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=15';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -540,7 +540,7 @@ layer.addEventListener('pointermove', (e) => {
   if (!p) return;
   if (p.isMove) {
     const c = (v) => Math.max(-1, Math.min(1, v / 60));
-    galaxy.moveInput.x = c(e.clientX - p.sx);
+    galaxy.moveInput.x = -c(e.clientX - p.sx); // the scene follows the finger
     galaxy.moveInput.z = c(e.clientY - p.sy);
   } else {
     galaxy.look(e.clientX - p.x, e.clientY - p.y);
