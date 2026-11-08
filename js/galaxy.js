@@ -29,7 +29,7 @@ void main(){
   float width = 0.5 + t * 1.7;
   float off = aG * width;
   float r = 0.5 + 5.7 * pow(t, 0.85) + off * 0.55;
-  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 + uSpin * (1.2 - 0.33 * t);
+  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 - uSpin * (1.2 - 0.33 * t);
   float rate = mix(16.0, 1.3, t);
   float jump = sin(uTime * rate * uMotion + aSeed * 6.283) * (0.02 + e * e * (0.3 + 0.45 * t));
   float d = r - uRipple;
@@ -43,7 +43,7 @@ void main(){
   vec3 core = vec3(1.0, 0.86, 0.68) * 0.95, mid = vec3(1.0, 0.54, 0.30) * 1.0, outer = vec3(0.31, 0.49, 1.0) * 1.3;
   vC = mix(mix(core, mid, smoothstep(0.0, 0.35, k)), outer, smoothstep(0.3, 0.85, k));
   vC *= 1.0 + lit * 0.22;
-  vA = smoothstep(-0.1, 0.45, t) * (0.07 + 0.42 * e) * (0.75 + 0.25 * sin(aSeed * 40.0));
+  vA = smoothstep(-0.1, 0.45, t) * (0.1 + 0.5 * e) * (0.75 + 0.25 * sin(aSeed * 40.0));
 }`;
 const SOFT_FS = /* glsl */`
 uniform float uBright;
@@ -53,22 +53,33 @@ void main(){
   float s = pow(d, 2.2);
   gl_FragColor = vec4(vC * uBright, vA * s);
 }`;
-// Breath light: a soft ball that grows over the galaxy on the inhale and sinks to the core on the exhale.
+// Breath light: feathered rays that reach out past the galaxy on the inhale
+// and draw back to the core, dimming, on the exhale. Always faces the viewer.
 const BREATH_VS = /* glsl */`
-varying vec3 vN, vV;
+uniform float uR;
+varying vec2 vP;
 void main(){
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  vN = normalize(normalMatrix * normal);
-  vV = normalize(-mv.xyz);
-  gl_Position = projectionMatrix * mv;
+  vP = position.xy;
+  vec4 c = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+  c.xy += position.xy * uR;
+  gl_Position = projectionMatrix * c;
 }`;
 const BREATH_FS = /* glsl */`
-uniform float uLevel, uWave;
-varying vec3 vN, vV;
+uniform float uLevel, uWave, uTime;
+varying vec2 vP;
 void main(){
-  float d = abs(dot(normalize(vN), normalize(vV)));
-  float a = pow(d, 2.4) * mix(0.008, 0.045, uLevel) * uWave;
-  gl_FragColor = vec4(vec3(1.0, 0.82, 0.66), a);
+  float r = length(vP);
+  if (r >= 1.0) discard;
+  float a = atan(vP.y, vP.x);
+  float n = 0.40 * sin(a * 7.0 + uTime * 0.05)
+          + 0.32 * sin(a * 13.0 - uTime * 0.07 + 1.3)
+          + 0.26 * sin(a * 23.0 + uTime * 0.04 + 2.1)
+          + 0.18 * sin(a * 41.0 - uTime * 0.03 + 0.4);
+  float rays = pow(smoothstep(-0.25, 1.1, n), 2.0);
+  float feather = pow(1.0 - r, 3.0);
+  float hollow = smoothstep(0.02, 0.2, r); // never adds light on top of the core
+  float glow = rays * feather * hollow * mix(0.015, 0.13, uLevel) * uWave;
+  gl_FragColor = vec4(vec3(1.0, 0.84, 0.68), glow);
 }`;
 const HEART_VS = /* glsl */`
 uniform float uBeat, uPx, uTime;
@@ -108,7 +119,7 @@ export class Galaxy {
   constructor(canvas) {
     const coarse = matchMedia('(pointer:coarse)').matches;
     const quest = /OculusBrowser|Quest/i.test(navigator.userAgent);
-    this.count = quest ? 60000 : coarse ? 36000 : 100000;
+    this.count = quest ? 40000 : coarse ? 24000 : 60000;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setClearColor(FLAT_BG);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.5 : 2));
@@ -186,10 +197,10 @@ export class Galaxy {
     this.world.add(new THREE.Points(g, this.armMat));
 
     this.breathMat = new THREE.ShaderMaterial({
-      ...blend, side: THREE.BackSide, depthTest: false, vertexShader: BREATH_VS, fragmentShader: BREATH_FS,
-      uniforms: { uLevel: { value: 0 }, uWave: this.armMat.uniforms.uWave },
+      ...blend, depthTest: false, vertexShader: BREATH_VS, fragmentShader: BREATH_FS,
+      uniforms: { uLevel: { value: 0 }, uR: { value: 1 }, uTime: this.shared.uTime, uWave: this.armMat.uniforms.uWave },
     });
-    this.breathBall = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), this.breathMat);
+    this.breathBall = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.breathMat);
     this.breathBall.frustumCulled = false;
     this.world.add(this.breathBall);
 
@@ -213,14 +224,14 @@ export class Galaxy {
     });
     this.world.add(new THREE.Points(hg, this.heartMat));
 
-    const sn = 2600, sp = new Float32Array(sn * 3);
+    const sn = 900, sp = new Float32Array(sn * 3);
     for (let i = 0; i < sn; i++) {
       const v = new THREE.Vector3().randomDirection().multiplyScalar(40 + Math.random() * 40);
       sp.set([v.x, v.y, v.z], i * 3);
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x8d8aa8, size: 1.4, sizeAttenuation: false, transparent: true, opacity: 0.65, depthWrite: false }));
+    this.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x8d8aa8, size: 1.4, sizeAttenuation: false, transparent: true, opacity: 0.5, depthWrite: false }));
     this.scene.add(this.stars);
   }
 
@@ -301,7 +312,7 @@ export class Galaxy {
   setTilt(x, z) { this.#tiltTarget = [x * this.motion, z * this.motion]; }
   setBreath(radius, level = 0) {
     this.shared.uRipple.value = radius;
-    this.breathBall.scale.setScalar(radius);
+    this.breathMat.uniforms.uR.value = radius * 1.35;
     this.breathMat.uniforms.uLevel.value = level;
   }
   beat(strength = 1) {
