@@ -4,10 +4,10 @@ import * as THREE from 'three';
 
 // Approximate scalp positions of the Muse sensors, relative to the pineal gland.
 export const SENSORS = [
-  { id: 'TP9', place: '左耳後', pos: new THREE.Vector3(4.9, -2.1, -0.3) },
-  { id: 'AF7', place: '左前額', pos: new THREE.Vector3(3.2, 0.6, 6.1) },
-  { id: 'AF8', place: '右前額', pos: new THREE.Vector3(-3.2, 0.6, 6.1) },
-  { id: 'TP10', place: '右耳後', pos: new THREE.Vector3(-4.9, -2.1, -0.3) },
+  { id: 'TP9', place: '左耳後', pos: new THREE.Vector3(4.9, -0.5, -1.0) },
+  { id: 'AF7', place: '左前額', pos: new THREE.Vector3(3.0, 2.1, 5.8) },
+  { id: 'AF8', place: '右前額', pos: new THREE.Vector3(-3.0, 2.1, 5.8) },
+  { id: 'TP10', place: '右耳後', pos: new THREE.Vector3(-4.9, -0.5, -1.0) },
 ];
 
 const VS = /* glsl */`

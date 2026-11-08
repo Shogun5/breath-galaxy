@@ -1,9 +1,9 @@
-import { Galaxy } from './galaxy.js?v=11';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=11';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=11';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=11';
-import { Soundscape } from './audio.js?v=11';
-import { hostRelay, joinRelay } from './relay.js?v=11';
+import { Galaxy } from './galaxy.js?v=12';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=12';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=12';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=12';
+import { Soundscape } from './audio.js?v=12';
+import { hostRelay, joinRelay } from './relay.js?v=12';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
