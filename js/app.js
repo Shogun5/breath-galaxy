@@ -1,10 +1,10 @@
-import { Galaxy } from './galaxy.js?v=13';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=13';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=13';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=13';
-import { Soundscape } from './audio.js?v=13';
-import { hostRelay, joinRelay } from './relay.js?v=13';
-import { tr, applyLang, setLang, locale } from './i18n.js?v=13';
+import { Galaxy } from './galaxy.js?v=14';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=14';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=14';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=14';
+import { Soundscape } from './audio.js?v=14';
+import { hostRelay, joinRelay } from './relay.js?v=14';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=14';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;

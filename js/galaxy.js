@@ -3,8 +3,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { tr } from './i18n.js?v=13';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=13';
+import { tr } from './i18n.js?v=14';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=14';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
@@ -35,7 +35,7 @@ void main(){
   float width = (0.5 + t * 1.7) * mix(0.55, 1.6, chaos) * (1.0 - 0.25 * uFocus);
   float off = aG * width;
   float r = 0.5 + 5.7 * pow(t, 0.85) * (1.0 - 0.12 * uFocus) + off * 0.55;
-  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 + (aSeed - 0.5) * chaos * chaos * 0.7 - uSpin * (1.2 - 0.33 * t);
+  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 + (aSeed - 0.5) * chaos * chaos * 0.7 - uSpin; // rigid turn: a radius-dependent speed winds the arms tighter over time
   float rate = mix(16.0, 1.3, t);
   float jump = sin(uTime * rate * uMotion + aSeed * 6.283) * (0.02 + e * e * (0.3 + 0.45 * t));
   jump += sin(uTime * (3.0 + aSeed * 19.0) * uMotion + aSeed * 50.0) * chaos * chaos * 0.24;
