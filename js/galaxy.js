@@ -11,7 +11,7 @@ const SPIN_PER_BEAT = 0.07, SPIN_DECAY = 3, SPIN_IDLE = 0.012;
 // Each arm is a live spectrogram. Along the arm: frequency (gamma inside, delta outside).
 // Across the arm: time (leading edge is now, trailing edge is about 6 s ago).
 const ARM_VS = /* glsl */`
-uniform float uTime, uSpin, uRipple, uPx, uMotion, uHead, uBright, uWave;
+uniform float uTime, uSpin, uRipple, uPx, uMotion, uHead, uBright, uWave, uFocus;
 uniform sampler2D uHist;
 attribute float aArm, aT, aSeed, aG, aSize, aThick;
 varying vec3 vC; varying float vA;
@@ -26,12 +26,15 @@ void main(){
   float w = aG * 0.5 + 0.5;
   float col = (uHead - 1.0 - w * (T - 3.0) + 0.5) / T;
   float e = mix(bandAt(col, row), bandAt(col, row + 1.0), f);
-  float width = 0.5 + t * 1.7;
+  vec4 h = texture2D(uHist, vec2(col, (row + 0.5) / 20.0));
+  float chaos = h.g, flick = h.b;
+  float width = (0.5 + t * 1.7) * mix(0.55, 1.6, chaos) * (1.0 - 0.25 * uFocus);
   float off = aG * width;
-  float r = 0.5 + 5.7 * pow(t, 0.85) + off * 0.55;
-  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 - uSpin * (1.2 - 0.33 * t);
+  float r = 0.5 + 5.7 * pow(t, 0.85) * (1.0 - 0.12 * uFocus) + off * 0.55;
+  float a = aArm * 1.5707963 + t * 2.5 + off * 0.35 + (aSeed - 0.5) * chaos * chaos * 0.7 - uSpin * (1.2 - 0.33 * t);
   float rate = mix(16.0, 1.3, t);
   float jump = sin(uTime * rate * uMotion + aSeed * 6.283) * (0.02 + e * e * (0.3 + 0.45 * t));
+  jump += sin(uTime * (3.0 + aSeed * 19.0) * uMotion + aSeed * 50.0) * chaos * chaos * 0.24;
   float d = r - uRipple;
   float lit = smoothstep(0.9, -0.9, d) * uWave; // stars inside the breath light are gently lifted
   float spread = 0.35 * (r * 0.35 + 0.3);
@@ -44,6 +47,8 @@ void main(){
   vC = mix(mix(core, mid, smoothstep(0.0, 0.35, k)), outer, smoothstep(0.3, 0.85, k));
   vC *= 1.0 + lit * 0.22;
   vA = smoothstep(-0.1, 0.45, t) * (0.1 + 0.5 * e) * (0.75 + 0.25 * sin(aSeed * 40.0));
+  vA *= 1.0 + flick * smoothstep(0.75, 0.1, t) * (0.55 + 0.55 * sin(uTime * (24.0 + aSeed * 30.0) * uMotion + aSeed * 90.0));
+  vA *= (1.0 - 0.45 * uFocus * smoothstep(0.35, 1.0, t)) * (1.0 + 0.4 * uFocus * smoothstep(0.5, 0.0, t));
 }`;
 const SOFT_FS = /* glsl */`
 uniform float uBright;
@@ -143,8 +148,9 @@ export class Galaxy {
       uSpin: { value: 0 },
     };
     this.motion = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0.5 : 1;
-    this.history = new Uint8Array(HIST_W * HIST_H).fill(70);
-    this.histTex = new THREE.DataTexture(this.history, HIST_W, HIST_H, THREE.RedFormat, THREE.UnsignedByteType);
+    this.history = new Uint8Array(HIST_W * HIST_H * 4);
+    for (let i = 0; i < this.history.length; i += 4) this.history.set([70, 70, 0, 255], i); // energy, chaos, flicker
+    this.histTex = new THREE.DataTexture(this.history, HIST_W, HIST_H, THREE.RGBAFormat, THREE.UnsignedByteType);
     this.histTex.magFilter = this.histTex.minFilter = THREE.LinearFilter;
     this.histTex.wrapS = THREE.RepeatWrapping;
     this.histTex.needsUpdate = true;
@@ -192,7 +198,7 @@ export class Galaxy {
     const blend = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
     this.armMat = new THREE.ShaderMaterial({
       ...blend, vertexShader: ARM_VS, fragmentShader: SOFT_FS,
-      uniforms: { ...this.shared, uHist: { value: this.histTex }, uHead: { value: 0 }, uWave: { value: 0 }, uMotion: { value: this.motion } },
+      uniforms: { ...this.shared, uHist: { value: this.histTex }, uHead: { value: 0 }, uWave: { value: 0 }, uFocus: { value: 0 }, uMotion: { value: this.motion } },
     });
     this.world.add(new THREE.Points(g, this.armMat));
 
@@ -299,13 +305,19 @@ export class Galaxy {
   #syncBright() { this.shared.uBright.value = this.mode === 'flat' && this.useBloom ? 0.55 : 0.62; }
 
   // Adds one time column to the spectrogram (about 10 per second).
-  setEnergy(e) {
+  setEnergy(e, chaos, flick, focus = 0) {
     const now = performance.now();
     if (now - this.#pushedAt < 85) return;
     this.#pushedAt = now;
     this.energy.set(e);
     this.#head = (this.#head + 1) % HIST_W;
-    for (let i = 0; i < HIST_H; i++) this.history[i * HIST_W + this.#head] = Math.round(e[i] * 255);
+    this.armMat.uniforms.uFocus.value = focus;
+    for (let i = 0; i < HIST_H; i++) {
+      const c = Math.floor(i / 5), p = (i * HIST_W + this.#head) * 4;
+      this.history[p] = Math.round(e[i] * 255);
+      this.history[p + 1] = Math.round((chaos ? chaos[c] : 0.28) * 255);
+      this.history[p + 2] = Math.round((flick ? flick[c] : 0) * 255);
+    }
     this.histTex.needsUpdate = true;
   }
 

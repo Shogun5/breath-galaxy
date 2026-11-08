@@ -43,6 +43,11 @@ export class EegAnalyzer {
   pos = [0, 0, 0, 0];
   count = [0, 0, 0, 0];
   baseFrames = [];
+  baseExt = [];
+  totals = [[], [], [], []];
+  chaos = new Float32Array(4).fill(0.3);
+  flick = new Float32Array(4);
+  focus = 0;
   baseline = null;
   energy = new Float32Array(20).fill(0.3);
 
@@ -57,7 +62,7 @@ export class EegAnalyzer {
   // One frame per call: log-power per band and quality per channel.
   frame() {
     if (this.count.some((c) => c < N)) return null;
-    const log = [], quality = [], artifact = [];
+    const log = [], quality = [], artifact = [], ext = [];
     for (let c = 0; c < 4; c++) {
       const x = new Float64Array(N);
       let mean = 0;
@@ -77,14 +82,28 @@ export class EegAnalyzer {
         for (let k = b.from; k <= b.to; k++) sum += ps[k];
         return Math.log10(sum / (b.to - b.from + 1) + 1e-6);
       }));
+      const bandLog = (from, to) => {
+        let sum = 0;
+        for (let k = from; k <= to; k++) sum += ps[k];
+        return Math.log10(sum / (to - from + 1) + 1e-6);
+      };
+      let total = 0, H = 0;
+      for (let k = 1; k <= 44; k++) total += ps[k];
+      for (let k = 1; k <= 44; k++) { const p = ps[k] / (total + 1e-9); if (p > 0) H -= p * Math.log(p); }
+      const level = log[c].reduce((a, v) => a + v, 0) / BANDS.length;
+      const hist = this.totals[c];
+      if (ptp <= 150) { hist.push(level); if (hist.length > 30) hist.shift(); }
+      const m = hist.reduce((a, v) => a + v, 0) / Math.max(1, hist.length);
+      const sd = Math.sqrt(hist.reduce((a, v) => a + (v - m) ** 2, 0) / Math.max(1, hist.length));
+      ext.push({ lo: bandLog(13, 19), hi: bandLog(20, 30), H: H / Math.log(44), sd });
       artifact.push(ptp > 150);
       quality.push(std < 30 && ptp < 150 ? 'good' : std < 70 ? 'fair' : 'bad');
     }
-    return { log, quality, artifact };
+    return { log, quality, artifact, ext };
   }
 
   collectBaseline(f) {
-    if (f.artifact.every((a) => !a)) this.baseFrames.push(f.log);
+    if (f.artifact.every((a) => !a)) { this.baseFrames.push(f.log); this.baseExt.push(f.ext); }
   }
 
   finishBaseline() {
@@ -95,12 +114,40 @@ export class EegAnalyzer {
       const sd = Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / Math.max(1, v.length));
       return { m, sd: Math.max(sd, 0.05) };
     }));
+    this.extBase = [0, 1, 2, 3].map((c) => Object.fromEntries(['lo', 'hi', 'H', 'sd'].map((k) => {
+      const v = this.baseExt.map((f) => f[c][k]);
+      const m = v.reduce((a, x) => a + x, 0) / Math.max(1, v.length);
+      const sd = Math.sqrt(v.reduce((a, x) => a + (x - m) ** 2, 0) / Math.max(1, v.length));
+      return [k, { m, sd: Math.max(sd, k === 'H' ? 0.01 : k === 'sd' ? 0.06 : 0.03) }];
+    })));
     return this.baseFrames.length;
   }
 
   // z-score against the person's own resting baseline, then a 0..1 display value.
   zscores(f) {
     return f.log.map((row, c) => row.map((v, b) => (v - this.baseline[c][b].m) / this.baseline[c][b].sd));
+  }
+
+  // How orderly each channel is, relative to this person's resting baseline.
+  updateOrder(f, z) {
+    const zOf = (c, k) => (f.ext[c][k] - this.extBase[c][k].m) / this.extBase[c][k].sd;
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    for (let c = 0; c < 4; c++) {
+      if (f.artifact[c]) continue;
+      const chaos = clamp(0.3 + 0.05 * zOf(c, 'H') + 0.3 * zOf(c, 'sd'));
+      const flick = clamp(0.32 * (zOf(c, 'hi') - Math.max(zOf(c, 'lo'), 0) * 0.5) - 0.2);
+      this.chaos[c] += (chaos - this.chaos[c]) * 0.14;
+      this.flick[c] += (flick - this.flick[c]) * 0.2;
+    }
+    let focus = 0, n = 0;
+    for (const c of [1, 2]) { // frontal channels
+      if (f.artifact[c]) continue;
+      focus += 0.65 * zOf(c, 'lo') + 0.3 * z[c][1] - 0.3 * z[c][2] - 0.5 * Math.max(z[c][0], 0);
+      n++;
+    }
+    const steady = (1 - (this.chaos[1] + this.chaos[2]) / 2) * (1 - (this.flick[1] + this.flick[2]) / 2);
+    if (n) this.focus += (clamp(((focus / n) * 0.5 - 0.1) * (0.5 + steady * 0.7)) - this.focus) * 0.1;
+    return { chaos: this.chaos, flick: this.flick, focus: this.focus };
   }
 
   updateEnergy(f, z) {

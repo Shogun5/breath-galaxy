@@ -1,9 +1,9 @@
-import { Galaxy } from './galaxy.js?v=4';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=4';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=4';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=4';
-import { Soundscape } from './audio.js?v=4';
-import { hostRelay, joinRelay } from './relay.js?v=4';
+import { Galaxy } from './galaxy.js?v=6';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=6';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=6';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=6';
+import { Soundscape } from './audio.js?v=6';
+import { hostRelay, joinRelay } from './relay.js?v=6';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -224,6 +224,12 @@ async function beginCalibration() {
   S.calibDone = false;
   location.hash = 'calib';
   requestWake();
+  if (S.source instanceof SimSource) {
+    S.source.warmBaseline(S.an);
+    finishCalibration();
+    S.gNeutral = [0, 0, 1];
+    if (!(S.settings.display === 'quest' && !S.vr)) await enterSession(); // the phone-to-Quest link still needs its code screen
+  }
 }
 function newSummary() { return { zSum: [0, 0, 0, 0, 0], n: 0, frames: 0, artifact: 0, ibis: [], trend: [], bucket: null, rowsStart: 0, startMs: 0 }; }
 
@@ -291,6 +297,8 @@ async function enterSession() {
   layer.hidden = false;
   layer.classList.toggle('sbs', S.localMode === 'sbs' || S.localMode === 'quest');
   $('h-rec').hidden = !S.rec;
+  $('sim-box').hidden = !(S.source instanceof SimSource);
+  paintSimState('neutral');
   $('h-notice').textContent = '';
   show('none');
 }
@@ -380,14 +388,15 @@ setInterval(() => {
   }
   if (!f || !recording()) return;
   const t = Math.round(performance.now() - S.t0);
-  f.log.forEach((row, c) => S.rec?.add('bands', `${t},${CHANNELS[c]},${row.map((x) => x.toFixed(4)).join(',')},${f.artifact[c] ? 1 : 0},${f.quality[c]}`));
+  f.log.forEach((row, c) => S.rec?.add('bands', `${t},${CHANNELS[c]},${row.map((x) => x.toFixed(4)).join(',')},${f.artifact[c] ? 1 : 0},${f.quality[c]},${f.ext[c].lo.toFixed(4)},${f.ext[c].hi.toFixed(4)},${f.ext[c].H.toFixed(4)}`));
   if (S.phase !== 'session') return;
   const z = S.an.zscores(f);
   const e = S.an.updateEnergy(f, z);
   const hl = GOAL_BAND[S.settings.goal];
   shown.set(e);
   if (hl !== undefined) for (let c = 0; c < 4; c++) shown[c * 5 + hl] = Math.min(1, e[c * 5 + hl] * 1.2);
-  galaxy.setEnergy(shown);
+  const order = S.an.updateOrder(f, z);
+  galaxy.setEnergy(shown, order.chaos, order.flick, order.focus);
   accumulate(z, f);
   let tx = 0, tz = 0;
   if (S.settings.tilt && S.gNeutral && S.g) {
@@ -395,7 +404,7 @@ setInterval(() => {
     tz = leanAngle(S.g[1] - S.gNeutral[1]);
   }
   galaxy.setTilt(tx, tz);
-  S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm, x: tx, z: tz });
+  S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm, x: tx, z: tz, c: Array.from(order.chaos), fl: Array.from(order.flick), fo: order.focus });
 }, 100);
 
 function accumulate(z, f) {
@@ -492,7 +501,7 @@ const layer = $('session');
 const pointers = new Map();
 const knob = $('knob');
 layer.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('button')) return;
+  if (e.target.closest('button, #legend')) return;
   const isMove = e.pointerType !== 'mouse' && e.clientX < innerWidth / 2;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, isMove });
   layer.setPointerCapture(e.pointerId);
@@ -542,10 +551,37 @@ $('s-mark').onclick = () => doMark();
 $('s-pause').onclick = togglePause;
 $('s-reset').onclick = () => galaxy.resetView();
 $('s-end').onclick = armEnd;
+const setLegend = (open) => {
+  $('legend').hidden = !open;
+  $('s-legend').setAttribute('aria-expanded', String(open));
+};
+$('s-legend').onclick = () => setLegend($('legend').hidden);
+$('legend-close').onclick = () => setLegend(false);
+$('guide-back').onclick = () => { if (history.length > 1) history.back(); else go('home'); };
 galaxy.onXRAction = (a) => {
   if (S.follower?.running) { S.follower.link.send({ t: a }); return; }
   if (a === 'mark') doMark('controller'); else togglePause();
 };
+
+const SIM_LABEL = { neutral: 'neutral', relax: 'relax', focus: 'focus', wander: 'wander', anxious: 'anxious' };
+const SIM_CAPTION = {
+  neutral: '模擬資料。切換狀態後約 10 秒會逐漸變化。',
+  relax: '放鬆：旋臂中段變亮，線條收窄、乾淨。',
+  focus: '專注：光往中心聚攏，外圍變淡。',
+  wander: '放空：外圍變亮，旋臂發散、不規則。',
+  anxious: '焦躁：內側細碎閃爍，旋臂發散。',
+};
+function paintSimState(name) {
+  document.querySelectorAll('#sim-states button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.s === name)));
+  $('sim-caption').textContent = SIM_CAPTION[name];
+  if (S.source instanceof SimSource) S.source.setState(name);
+}
+$('sim-states').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  paintSimState(b.dataset.s);
+  logEvent('sim_state', SIM_LABEL[b.dataset.s]);
+});
 
 const KEYS = { KeyW: ['z', -1], KeyS: ['z', 1], KeyA: ['x', -1], KeyD: ['x', 1], KeyE: ['y', 1], KeyQ: ['y', -1] };
 addEventListener('keydown', (e) => {
@@ -583,7 +619,7 @@ function followerMessage(f, m) {
     f.running = true; f.elapsed = 0; f.last = performance.now();
     galaxy.setSession(true);
   } else if (m.t === 'f') {
-    galaxy.setEnergy(Float32Array.from(m.e, (x) => x / 255));
+    galaxy.setEnergy(Float32Array.from(m.e, (x) => x / 255), m.c, m.fl, m.fo);
     f.paused = m.p; f.hr = m.hr;
     galaxy.setTilt(m.x ?? 0, m.z ?? 0);
     if (Math.abs(f.elapsed - m.el) > 0.15) f.elapsed = m.el;

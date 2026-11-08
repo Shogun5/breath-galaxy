@@ -109,6 +109,15 @@ function decodeImu(view, scale) {
 }
 
 // Simulated headband: lets every page be used and demoed without hardware.
+// Band gains for previewing how each state looks. These are illustrative, not measured data.
+const SIM_STATES = {
+  neutral: { d: 1, t: 1, a: 1, lo: 1, hi: 1, g: 1, mess: 0.15 },
+  relax: { d: 0.8, t: 0.9, a: 2.6, lo: 0.6, hi: 0.5, g: 0.6, mess: 0 },
+  focus: { d: 0.7, t: 1.9, a: 0.5, lo: 2.6, hi: 0.9, g: 1, mess: 0 },
+  wander: { d: 2.0, t: 2.0, a: 0.7, lo: 0.7, hi: 0.8, g: 0.8, mess: 1.8 },
+  anxious: { d: 0.9, t: 0.9, a: 0.6, lo: 1.1, hi: 4.2, g: 1.6, mess: 1 },
+};
+
 export class SimSource {
   name = '模擬資料';
   onPacket = () => {};
@@ -123,6 +132,26 @@ export class SimSource {
   #blinkUntil = -1;
   #pink = [0, 0, 0, 0];
   #phaseHR = 0;
+  #gain = { ...SIM_STATES.neutral };
+  #target = SIM_STATES.neutral;
+  #wob = [1, 1, 1, 1, 1, 1];
+
+  setState(name) { this.#target = SIM_STATES[name] || SIM_STATES.neutral; }
+
+  // Generates 40 s of neutral signal at once, so simulated sessions need no waiting.
+  warmBaseline(analyzer) {
+    const live = this.onPacket;
+    this.onPacket = (p) => { if (p.kind === 'eeg') analyzer.push(p.ch, p.samples); };
+    let owed = 0;
+    const seq = this.#seq; // packet numbers must stay on the wall clock
+    for (let i = 0; i < 420; i++) {
+      for (owed += 256 / 10 / 12; owed >= 1; owed--) this.#eeg();
+      const f = analyzer.frame();
+      if (f && i > 20) analyzer.collectBaseline(f);
+    }
+    this.#seq = seq;
+    this.onPacket = live;
+  }
 
   async connect() {
     this.#timers.push(setInterval(() => this.#eeg(), (12 / 256) * 1000));
@@ -141,15 +170,23 @@ export class SimSource {
     for (let i = 0; i < 12; i++) {
       const t = this.#n++ / 256;
       if (Math.random() < 0.00012) this.#blinkUntil = t + 0.3;
+      for (const k in this.#gain) this.#gain[k] += (this.#target[k] - this.#gain[k]) * 0.0006;
+      const G = this.#gain;
+      for (let w = 0; w < 6; w++) {
+        this.#wob[w] += (1 - this.#wob[w]) * 0.0007 + (Math.random() - 0.5) * 0.09 * G.mess;
+        this.#wob[w] = Math.max(0.05, Math.min(2.6, this.#wob[w]));
+      }
+      const W = this.#wob;
       for (let c = 0; c < 4; c++) {
         const m = (hz, off) => 0.55 + 0.45 * Math.sin(t * hz + c * 1.3 + off);
         this.#pink[c] = 0.98 * this.#pink[c] + 0.9 * (Math.random() - 0.5);
-        let v = this.#pink[c] * 3
-          + 16 * m(0.11, 0) * Math.sin(2 * Math.PI * 2.3 * t + c)
-          + 10 * m(0.17, 2) * Math.sin(2 * Math.PI * 6 * t + c * 2)
-          + 14 * m(0.07, 4) * Math.sin(2 * Math.PI * 10.2 * t + c * 0.5)
-          + 5 * m(0.23, 1) * Math.sin(2 * Math.PI * 20 * t + c * 3)
-          + 2.4 * m(0.31, 3) * Math.sin(2 * Math.PI * 38 * t + c);
+        let v = this.#pink[c] * 3 * (1 + G.mess * 1.5)
+          + 16 * G.d * W[0] * m(0.27, 0) * Math.sin(2 * Math.PI * 2.3 * t + c)
+          + 10 * G.t * W[1] * m(0.17, 2) * Math.sin(2 * Math.PI * 6 * t + c * 2)
+          + 14 * G.a * W[2] * m(0.21, 4) * Math.sin(2 * Math.PI * 10.2 * t + c * 0.5)
+          + 4 * G.lo * W[3] * m(0.23, 1) * Math.sin(2 * Math.PI * 16 * t + c * 3)
+          + 3 * G.hi * W[4] * m(0.27, 5) * Math.sin(2 * Math.PI * 25 * t + c)
+          + 2.4 * G.g * W[5] * m(0.31, 3) * Math.sin(2 * Math.PI * 38 * t + c);
         if (t < this.#blinkUntil && (c === 1 || c === 2)) v += 130;
         packet[c].push(v);
       }

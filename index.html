@@ -6,7 +6,7 @@
 <title>星息 Breath Galaxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=6">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -25,6 +25,7 @@
     <div class="links">
       <button class="text" id="btn-receive">Quest 接收手機資料</button>
       <a class="text" href="#history">歷史紀錄</a>
+      <a class="text" href="#guide">怎麼看這片銀河</a>
     </div>
     <ul class="checks" id="checks"></ul>
     <p class="fine">本程式用於放鬆訓練與教學，非醫療器材，不作診斷。資料只存在此裝置。</p>
@@ -81,7 +82,7 @@
       <label class="check"><input type="checkbox" id="recordRaw"> 記錄原始 EEG、PPG 與動作資料</label>
     </fieldset>
 
-    <div class="actions"><button class="primary" type="submit">開始校準</button><a class="text" href="#home">返回</a></div>
+    <div class="actions"><button class="primary" type="submit">開始校準</button><a class="text" href="#home">返回</a><a class="text" href="#guide">使用說明</a></div>
   </form>
 </section>
 
@@ -121,12 +122,77 @@
     <div class="hud-right"><span id="h-hr">— bpm</span><span id="h-rec" class="rec" hidden>REC</span></div>
   </div>
   <div class="hud-breath" id="h-breath" aria-live="off">吸氣</div>
+  <div class="sim-box" id="sim-box" hidden>
+  <div class="sim-states" id="sim-states">
+    <button data-s="neutral">一般</button><button data-s="relax">放鬆</button><button data-s="focus">專注</button><button data-s="wander">放空</button><button data-s="anxious">焦躁</button>
+  </div>
+  <p class="sim-caption" id="sim-caption" role="status"></p>
+  </div>
   <p class="notice" id="h-notice" role="status"></p>
   <div class="hud-actions">
-    <button id="s-mark">標記</button><button id="s-pause">暫停</button><button id="s-reset">重設視角</button><button id="s-end">結束</button>
+    <button id="s-mark">標記</button><button id="s-pause">暫停</button><button id="s-reset">重設視角</button><button id="s-legend" aria-expanded="false" aria-controls="legend">圖例</button><button id="s-end">結束</button>
   </div>
   <div class="updown"><button id="s-up" aria-label="上升">上</button><button id="s-down" aria-label="下降">下</button></div>
   <div class="knob" id="knob" hidden></div>
+  <aside class="legend" id="legend" hidden aria-label="圖例">
+    <h3>銀河圖例</h3>
+    <dl class="legend-list">
+        <div><dt>旋臂的長度</dt><dd>代表頻率。靠中心是高頻（γ、β），中段是 α，外圍是低頻（θ、δ）。</dd></div>
+        <div><dt>旋臂的寬度</dt><dd>代表時間。一側是現在，另一側是約 6 秒前，訊號會橫向流過。</dd></div>
+        <div><dt>亮度與跳動</dt><dd>該頻率比您校準時的靜息狀態更強，就更亮、跳得更明顯。</dd></div>
+        <div><dt>收窄或發散</dt><dd>代表訊號穩定度。穩定時旋臂收窄、線條乾淨；忽大忽小時顆粒散開。</dd></div>
+        <div><dt>細碎閃爍</dt><dd>高頻 β（20–30 Hz）相對偏高時，內側星點會細碎閃動。</dd></div>
+        <div><dt>往中心聚攏</dt><dd>前額 θ 與低頻 β 上升、訊號又穩定時，光往中心收、外圍變淡。</dd></div>
+        <div><dt>放射光芒</dt><dd>呼吸引導：吸氣時光芒向外延伸，吐氣時變暗並收回中心。</dd></div>
+    </dl>
+    <button id="legend-close">關閉</button>
+  </aside>
+</section>
+
+<section class="screen scroll" data-screen="guide">
+  <div class="panel wide">
+    <p class="eyebrow">使用說明</p>
+    <h2>怎麼看這片銀河</h2>
+    <dl class="legend-list">
+        <div><dt>四條旋臂</dt><dd>四個感測點各一條：左耳後 TP9、左前額 AF7、右前額 AF8、右耳後 TP10。</dd></div>
+        <div><dt>旋臂的長度</dt><dd>代表頻率。靠中心是高頻（γ、β），中段是 α，外圍是低頻（θ、δ）。</dd></div>
+        <div><dt>旋臂的寬度</dt><dd>代表時間。一側是現在，另一側是約 6 秒前，訊號會橫向流過。</dd></div>
+        <div><dt>亮度與跳動</dt><dd>該頻率比您校準時的靜息狀態更強，就更亮、跳得更明顯。</dd></div>
+        <div><dt>收窄或發散</dt><dd>代表訊號穩定度。穩定時旋臂收窄、線條乾淨；忽大忽小時顆粒散開。</dd></div>
+        <div><dt>細碎閃爍</dt><dd>高頻 β（20–30 Hz）相對偏高時，內側星點會細碎閃動。</dd></div>
+        <div><dt>往中心聚攏</dt><dd>前額 θ 與低頻 β 上升、訊號又穩定時，光往中心收、外圍變淡。</dd></div>
+        <div><dt>中心亮點與旋轉</dt><dd>中心隨心跳脈動，每一拍轉一小段，心跳越快轉得越快。</dd></div>
+        <div><dt>銀河傾斜</dt><dd>跟著您的頭部傾斜，以校準時的姿勢為基準。</dd></div>
+        <div><dt>放射光芒</dt><dd>呼吸引導：吸氣時光芒向外延伸，吐氣時變暗並收回中心。</dd></div>
+    </dl>
+
+    <h3>不同狀態通常的樣子</h3>
+    <div class="state-table" role="table" aria-label="狀態對照">
+      <div role="row" class="head"><span role="columnheader">狀態</span><span role="columnheader">腦波傾向</span><span role="columnheader">銀河</span></div>
+      <div role="row"><b role="cell">放鬆</b><span role="cell">α 上升，β 下降</span><span role="cell">中段變亮，旋臂收窄、線條乾淨</span></div>
+      <div role="row"><b role="cell">專注</b><span role="cell">前額 θ、低頻 β 上升，α 下降</span><span role="cell">光往中心聚攏，外圍變淡</span></div>
+      <div role="row"><b role="cell">放空、走神</b><span role="cell">δ、θ 上升，α、β 下降，較不穩定</span><span role="cell">外圍變亮、旋臂發散</span></div>
+      <div role="row"><b role="cell">焦躁、想不停</b><span role="cell">高頻 β 上升，訊號不穩定</span><span role="cell">內側細碎閃爍、旋臂發散</span></div>
+    </div>
+    <p class="hint">這是常見傾向，每個人差異很大。沒有單一波段能代表「亂想」，銀河也不會判斷您在想什麼。想看出自己的變化，建議多次記錄後比較。</p>
+
+    <h3>畫面突然變化，可能不是腦波</h3>
+    <dl class="legend-list">
+        <div><dt>咬牙、皺眉</dt><dd>肌肉訊號會讓內側的高頻區變亮、閃爍。放鬆下顎通常就會恢復。</dd></div>
+        <div><dt>眨眼、轉動眼球</dt><dd>會影響前額的低頻。偵測到大幅雜訊時，該旋臂會暫時淡化。</dd></div>
+        <div><dt>想睡</dt><dd>θ 上升、α 下降，看起來可能和放空很像。</dd></div>
+        <div><dt>心跳不跳動</dt><dd>頭帶沒貼緊額頭時，PPG 可能測不到心跳，中心就不會脈動。</dd></div>
+    </dl>
+
+    <h3>操作方式</h3>
+    <dl class="legend-list">
+        <div><dt>手機／電腦 3D</dt><dd>手機左半邊移動、右半邊轉向。電腦用 WASD、Q／E 升降，滑鼠轉向，M 標記、空白鍵暫停、R 重設。</dd></div>
+        <div><dt>XREAL One</dt><dd>眼鏡先切 3D 模式。手機左半邊移動、右半邊轉向；雙擊暫停、兩指標記、三指連按兩次結束。</dd></div>
+        <div><dt>Quest 3</dt><dd>左搖桿移動，右搖桿升降與轉向，A 標記、握把暫停、B 重設視角。</dd></div>
+    </dl>
+    <p class="fine">本程式用於放鬆訓練與教學，非醫療器材，不作診斷。</p>
+    <div class="actions"><button class="primary" id="guide-back">返回</button></div>
+  </div>
 </section>
 
 <section class="screen scroll" data-screen="results">
@@ -140,6 +206,7 @@
       <button class="primary" id="r-export">匯出 ZIP</button>
       <button id="r-share" hidden>分享到…</button>
       <a class="text" href="#history">歷史紀錄</a>
+      <a class="text" href="#guide">怎麼解讀</a>
       <a class="text" href="#home">回首頁</a>
     </div>
     <p class="status" id="r-status" role="status"></p>
@@ -157,6 +224,6 @@
   </div>
 </section>
 
-<script type="module" src="js/app.js?v=4"></script>
+<script type="module" src="js/app.js?v=6"></script>
 </body>
 </html>

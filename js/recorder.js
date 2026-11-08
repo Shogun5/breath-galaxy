@@ -2,7 +2,7 @@
 
 const HEADERS = {
   eeg_raw: 't_ms,TP9,AF7,AF8,TP10',
-  bands: 't_ms,channel,delta,theta,alpha,beta,gamma,artifact,quality',
+  bands: 't_ms,channel,delta,theta,alpha,beta,gamma,artifact,quality,beta_low,beta_high,spectral_entropy',
   ppg: 't_ms,ambient,infrared,red',
   heartbeats: 't_ms,ibi_ms,hr_bpm',
   motion: 't_ms,sensor,x,y,z',
