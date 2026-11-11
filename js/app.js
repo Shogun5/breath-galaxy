@@ -1,10 +1,10 @@
-import { Galaxy } from './galaxy.js?v=17';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=17';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=17';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=17';
-import { Soundscape } from './audio.js?v=17';
-import { hostRelay, joinRelay } from './relay.js?v=17';
-import { tr, applyLang, setLang, locale } from './i18n.js?v=17';
+import { Galaxy } from './galaxy.js?v=18';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=18';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd, StateEstimator } from './dsp.js?v=18';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=18';
+import { Soundscape } from './audio.js?v=18';
+import { hostRelay, joinRelay } from './relay.js?v=18';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=18';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -259,7 +259,7 @@ async function beginCalibration() {
     if (!(S.settings.display === 'quest' && !S.vr)) await enterSession(); // the phone-to-Quest link still needs its code screen
   }
 }
-function newSummary() { return { zSum: [0, 0, 0, 0, 0], n: 0, frames: 0, artifact: 0, ibis: [], trend: [], bucket: null, rowsStart: 0, startMs: 0 }; }
+function newSummary() { return { stateTime: {}, zSum: [0, 0, 0, 0, 0], n: 0, frames: 0, artifact: 0, ibis: [], trend: [], bucket: null, rowsStart: 0, startMs: 0 }; }
 
 function renderQuality(f) {
   const t = { good: tr('良好'), fair: tr('普通'), bad: tr('不佳') };
@@ -320,6 +320,9 @@ async function enterSession() {
   S.phase = 'session';
   S.elapsed = 0; S.paused = false; S.last = performance.now();
   S.yaw = 0;
+  S.states = new StateEstimator();
+  S.stateShown = null;
+  showState('steady');
   S.sum.startMs = S.last; S.sum.rowsStart = S.eegRows;
   S.breathPhase = null;
   logEvent('session_start', `display=${S.localMode}`);
@@ -392,6 +395,21 @@ function idleEnergy(now) {
   galaxy.setEnergy(idle);
 }
 
+const STATE_TEXT = {
+  steady: ['平穩', '各頻段接近您的靜息基準。'],
+  relax: ['放鬆傾向', 'α 相對上升、β 下降，常見於放鬆或閉眼休息。'],
+  focus: ['專注傾向', '參與度指數 β/(α+θ) 上升，訊號穩定。'],
+  wander: ['放空傾向', 'θ/β 比值上升、訊號較不穩定，可能是走神或想睡。'],
+  tense: ['緊繃傾向', '高頻 β 偏高且不穩定。可能是焦躁，也可能只是咬牙或皺眉。'],
+  noisy: ['訊號不穩', '雜訊太多，請放鬆下顎、調整頭帶。'],
+};
+function showState(key) {
+  const [name, why] = STATE_TEXT[key] || STATE_TEXT.steady;
+  $('h-state').textContent = tr(name);
+  $('h-state-why').textContent = tr(why);
+  $('h-state-box').dataset.state = key;
+}
+
 function drawHud(b) {
   const left = S.settings.minutes * 60 - S.elapsed;
   const word = S.paused ? tr('暫停') : b.inhale ? tr('吸氣') : tr('吐氣');
@@ -399,7 +417,8 @@ function drawHud(b) {
   $('h-time').textContent = clock(Math.max(0, left));
   $('h-breath').textContent = word;
   $('h-hr').textContent = hr ? `${Math.round(hr)} bpm` : '— bpm';
-  if (S.localMode !== 'flat') galaxy.setHud(clock(Math.max(0, left)), S.endArmed ? tr('再一次結束') : word, hr ? `${Math.round(hr)} bpm` : '');
+  const stateName = tr((STATE_TEXT[S.stateShown] || STATE_TEXT.steady)[0]);
+  if (S.localMode !== 'flat') galaxy.setHud(clock(Math.max(0, left)), S.endArmed ? tr('再一次結束') : word, `${stateName}  ${hr ? `${Math.round(hr)} bpm` : ''}`);
 }
 
 // 10 Hz analysis clock
@@ -427,13 +446,20 @@ setInterval(() => {
   shown.set(e);
   if (hl !== undefined) for (let c = 0; c < 4; c++) shown[c * 5 + hl] = Math.min(1, e[c * 5 + hl] * 1.2);
   const order = S.an.updateOrder(f, z);
+  const state = S.states.update(z, f, order);
+  if (state !== S.stateShown) {
+    S.stateShown = state;
+    logEvent('state', state);
+    showState(state);
+  }
+  S.sum.stateTime[state] = (S.sum.stateTime[state] || 0) + 0.1;
   galaxy.setEnergy(shown, order.chaos, order.flick, order.focus);
   accumulate(z, f);
   let tx = 0, tz = 0, ty = 0;
   if (S.settings.tilt && S.gNeutral && S.g) {
     tx = leanAngle(S.g[0] - S.gNeutral[0]);
     tz = leanAngle(S.g[1] - S.gNeutral[1]);
-    if (S.settings.view === 'brain') ty = S.yaw || 0;
+    if (S.settings.view === 'brain') ty = -(S.yaw || 0); // sign confirmed on a Muse S
   }
   galaxy.setTilt(tx, tz, ty);
   S.relay?.send({ t: 'f', e: Array.from(shown, (x) => Math.round(x * 255)), el: S.elapsed, p: S.paused, hr: S.beats.bpm, x: tx, z: tz, y: ty, c: Array.from(order.chaos), fl: Array.from(order.flick), fo: order.focus });
@@ -519,6 +545,7 @@ function makeSummary() {
     eegCompletePct: m > 0 ? +Math.min(100, ((S.eegRows - s.rowsStart) / (m * 60 * 256)) * 100).toFixed(1) : null,
     bandZ: s.zSum.map((v) => (s.n ? +(v / s.n).toFixed(3) : null)),
     trend: s.trend,
+    stateShare: Object.fromEntries(Object.entries(s.stateTime).map(([k, v]) => [k, +(v / 60).toFixed(2)])),
   };
 }
 
@@ -701,7 +728,9 @@ function renderResults() {
     $('r-hero').textContent = signed(s.bandZ?.[b]);
     $('r-hero-label').textContent = tr('{0}，相對靜息基準（SD）', BANDS[b].label);
   }
-  const stats = [[tr('平均心率'), n1(s.hrMean)], ['RMSSD ms', n1(s.rmssd)], [tr('訓練分鐘'), n1(s.minutes)], [tr('雜訊比例'), n1(s.artifactPct, '%')], [tr('EEG 完整度'), n1(s.eegCompletePct, '%')]];
+  const share = Object.entries(s.stateShare || {}).filter(([k]) => k !== 'steady' && k !== 'noisy').sort((x, y) => y[1] - x[1]);
+  const mainState = share.length && share[0][1] > 0 ? tr(STATE_TEXT[share[0][0]][0]) : tr('平穩');
+  const stats = [[tr('最常出現的狀態'), mainState], [tr('平均心率'), n1(s.hrMean)], ['RMSSD ms', n1(s.rmssd)], [tr('訓練分鐘'), n1(s.minutes)], [tr('雜訊比例'), n1(s.artifactPct, '%')], [tr('EEG 完整度'), n1(s.eegCompletePct, '%')]];
   $('r-stats').replaceChildren(...stats.map(([k, v]) => {
     const d = document.createElement('div');
     d.innerHTML = '<b></b><span></span>';

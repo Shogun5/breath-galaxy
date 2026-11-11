@@ -6,7 +6,7 @@
 <title>星息 Breath Galaxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Noto+Sans+JP:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=17">
+<link rel="stylesheet" href="css/style.css?v=18">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -127,6 +127,10 @@
     <div><span class="timer" id="h-time">00:00</span></div>
     <div class="hud-right"><span id="h-hr">— bpm</span><span id="h-rec" class="rec" hidden>REC</span></div>
   </div>
+  <div class="state-box" id="h-state-box" data-state="steady" aria-live="polite">
+    <p class="state-name" id="h-state">平穩</p>
+    <p class="state-why" id="h-state-why"></p>
+  </div>
   <div class="hud-breath" id="h-breath" aria-live="off">吸氣</div>
   <div class="sim-box" id="sim-box" hidden>
   <div class="sim-states" id="sim-states">
@@ -181,6 +185,16 @@
         <div><dt>標籤文字</dt><dd>顯示該感測點目前相對最強的頻段，「平穩」表示沒有明顯偏強。</dd></div>
         <div><dt>限制</dt><dd>頭皮腦波訊號會擴散，只能說是「感測點附近」的活動，無法定位到某個深部腦區。</dd></div>
         <div><dt>模型來源</dt><dd>Detailed Human Brain Model，Johnson J，NIH 3D（3DPX-021161），CC BY 4.0。為了網頁載入已簡化面數。</dd></div>
+    </dl>
+
+    <h3>「目前狀態」怎麼判斷</h3>
+    <dl class="legend-list">
+        <div><dt>比較基準</dt><dd>每個指標都和您校準時的靜息狀態比較，並在約 2 秒內平滑，至少持續 3 秒才換狀態。</dd></div>
+        <div><dt>放鬆傾向</dt><dd>α 相對上升、β 下降。α 增加是放鬆與閉眼休息最常見的變化。</dd></div>
+        <div><dt>專注傾向</dt><dd>參與度指數 β/(α+θ) 上升（Pope 等人提出，用於持續注意力研究），加上前額 θ 上升、訊號穩定。</dd></div>
+        <div><dt>放空傾向</dt><dd>θ/β 比值上升且訊號較不穩定。研究發現走神時 θ 增加、β 減少；想睡時 θ 也會上升。</dd></div>
+        <div><dt>緊繃傾向</dt><dd>高頻 β（20–30 Hz）偏高且訊號不穩定。這一項的研究證據最弱，咬牙、皺眉的肌肉訊號也會造成相同結果。</dd></div>
+        <div><dt>注意</dt><dd>這些是傾向，不是診斷，也無法知道您在想什麼。Muse 只有四個乾電極，個人差異也很大，建議多次記錄後與自己比較。</dd></div>
     </dl>
 
     <h3>不同狀態通常的樣子</h3>
@@ -245,6 +259,6 @@
   <button data-lang="zh">中文</button><button data-lang="en">EN</button><button data-lang="ja">日本語</button>
 </div>
 
-<script type="module" src="js/app.js?v=17"></script>
+<script type="module" src="js/app.js?v=18"></script>
 </body>
 </html>

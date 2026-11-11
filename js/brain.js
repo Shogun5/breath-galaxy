@@ -23,7 +23,7 @@ uniform float uFade;
 varying vec3 vN, vV;
 void main(){
   float f = 1.0 - abs(dot(normalize(vN), normalize(vV)));
-  float a = (0.03 + pow(f, 1.6) * 0.34) * uFade;
+  float a = (0.018 + pow(f, 1.6) * 0.2) * uFade;
   gl_FragColor = vec4(mix(vec3(0.34, 0.42, 0.95), vec3(0.78, 0.82, 1.0), f), a);
 }`;
 

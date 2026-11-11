@@ -73,6 +73,12 @@ select option { background: var(--bg); }
 .hud-right { display: flex; gap: 14px; align-items: center; font-size: 18px; padding-top: 12px; }
 .rec { color: var(--accent2); font-size: 12px; letter-spacing: .14em; }
 .hud-breath { position: absolute; left: 0; right: 0; bottom: 110px; text-align: center; font-size: clamp(30px, 5vw, 44px); color: var(--accent2); pointer-events: none; text-shadow: 0 0 10px #0b0d10, 0 0 3px #0b0d10; }
+.state-box { position: absolute; right: var(--gutter); top: 64px; max-width: min(320px, 46%); text-align: right; pointer-events: none; text-shadow: 0 0 10px #0b0d10; }
+.state-box p { margin: 0; }
+.state-name { font-size: 20px; font-weight: 500; }
+.state-why { font-size: 13px; color: var(--muted); margin-top: 2px !important; }
+.state-box[data-state="noisy"] .state-name { color: var(--accent2); }
+@media (max-width: 720px) { .state-why { display: none; } .state-box { top: 58px; } }
 .sim-box { position: absolute; left: var(--gutter); top: 88px; max-width: min(520px, calc(100% - 96px)); }
 .sim-states { display: flex; flex-wrap: wrap; gap: 6px; }
 .sim-caption { margin: 8px 0 0; font-size: 14px; color: var(--ink); text-shadow: 0 0 8px #0b0d10; }

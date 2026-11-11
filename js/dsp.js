@@ -258,3 +258,39 @@ export function rmssd(ibis) {
   for (let i = 1; i < ibis.length; i++) sum += (ibis[i] - ibis[i - 1]) ** 2;
   return Math.sqrt(sum / (ibis.length - 1));
 }
+
+// Names a likely state from band changes against the person's own resting baseline.
+// Markers: relaxation = alpha up / beta down; focus = engagement index beta/(alpha+theta)
+// (Pope et al.) with frontal theta; wandering or drowsy = theta/beta up; tension = high beta
+// with an unsteady signal (weakest evidence, and muscle activity looks the same).
+export const STATES = ['steady', 'relax', 'focus', 'wander', 'tense'];
+export class StateEstimator {
+  scores = { relax: 0, focus: 0, wander: 0, tense: 0 };
+  state = 'steady';
+  #candidate = 'steady';
+  #since = 0;
+  #clean = 1;
+
+  update(z, f, order, now = performance.now()) {
+    const ok = [0, 1, 2, 3].filter((c) => !f.artifact[c]);
+    this.#clean += ((ok.length / 4) - this.#clean) * 0.1;
+    if (!ok.length) return this.state;
+    const m = [0, 1, 2, 3, 4].map((b) => ok.reduce((a, c) => a + z[c][b], 0) / ok.length);
+    const [d, t, a, b, g] = m;
+    const flick = ok.reduce((s, c) => s + order.flick[c], 0) / ok.length;
+    const chaos = ok.reduce((s, c) => s + order.chaos[c], 0) / ok.length;
+    const raw = {
+      relax: a - 0.5 * b - flick,
+      focus: (b - 0.5 * (a + t)) + 1.2 * order.focus - 1.5 * flick - 2 * Math.max(chaos - 0.45, 0),
+      wander: (t - b) + 0.4 * d + 3 * (chaos - 0.4),
+      tense: 3 * flick + 2 * (chaos - 0.4) + 0.3 * g,
+    };
+    for (const k in raw) this.scores[k] += (raw[k] - this.scores[k]) * 0.05;
+    let best = 'steady', top = 0.8;
+    for (const k in this.scores) if (this.scores[k] > top) { top = this.scores[k]; best = k; }
+    if (this.#clean < 0.5) best = 'noisy';
+    if (best !== this.#candidate) { this.#candidate = best; this.#since = now; }
+    if (best !== this.state && now - this.#since > 3000) this.state = best; // hold 3 s before switching
+    return this.state;
+  }
+}
