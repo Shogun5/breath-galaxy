@@ -1,7 +1,7 @@
 // Phone-to-headset link for headsets whose browser cannot reach the Muse directly.
 // A public PeerJS broker introduces the two devices; the data then flows device to device.
 
-import { tr } from './i18n.js?v=15';
+import { tr } from './i18n.js?v=17';
 
 function loadPeer() {
   if (window.Peer) return Promise.resolve();

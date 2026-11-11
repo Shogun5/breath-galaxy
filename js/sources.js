@@ -3,6 +3,8 @@
 //   onPacket({kind:'accel'|'gyro', seq, xyz:[[x,y,z]*3]})
 //   onTelemetry({battery}), onDisconnect()
 
+import { ATHENA_DATA, ATHENA_DATA2, ATHENA_PRESET, parseAthena } from './athena.js?v=17';
+
 export const CHANNELS = ['TP9', 'AF7', 'AF8', 'TP10'];
 
 const SERVICE = 0xfe8d;
@@ -25,10 +27,13 @@ export class MuseSource {
   device = null;
   chars = [];
   intentional = false;
+  step = 'choose'; // which part of the connection is running, for error reports
+  missing = []; // optional sensors this headband did not offer
 
   async connect() {
+    this.step = 'choose';
     this.device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE] }],
+      filters: [{ services: [SERVICE] }, { namePrefix: 'Muse' }],
       optionalServices: [SERVICE],
     });
     this.name = this.device.name || 'Muse';
@@ -42,33 +47,136 @@ export class MuseSource {
     await this.#open();
   }
 
-  async #open() {
-    const gatt = await this.device.gatt.connect();
-    const svc = await gatt.getPrimaryService(SERVICE);
-    this.control = await svc.getCharacteristic(CONTROL);
-    this.chars = [];
+  // Android often fails the first GATT connection, so it is retried a few times.
+  async #gatt() {
+    let last;
+    for (let i = 0; i < 4; i++) {
+      try {
+        this.step = `gatt${i ? ` retry ${i}` : ''}`;
+        const gatt = await this.device.gatt.connect();
+        this.step = 'service fe8d';
+        return { svc: await gatt.getPrimaryService(SERVICE) };
+      } catch (e) {
+        last = e;
+        try { this.device.gatt.disconnect(); } catch { /* not connected */ }
+        await wait(700);
+      }
+    }
+    throw last;
+  }
 
-    const listen = async (id, fn) => {
-      const c = await svc.getCharacteristic(id);
-      c.addEventListener('characteristicvaluechanged', (e) => fn(e.target.value));
-      await c.startNotifications();
-      this.chars.push(c);
+  async #open() {
+    const { svc } = await this.#gatt();
+    this.step = 'control';
+    this.control = await svc.getCharacteristic(CONTROL);
+    try { await this.control.startNotifications(); } catch { /* replies are optional */ }
+    this.chars = [];
+    this.missing = [];
+
+    // The Muse S Athena has one multiplexed data characteristic instead of one per sensor.
+    this.step = 'detect model';
+    let uuids = [];
+    try { uuids = (await svc.getCharacteristics()).map((c) => c.uuid.toLowerCase()); } catch { /* fall back to classic */ }
+    if (uuids.includes(ATHENA_DATA) && !uuids.includes(EEG[0])) {
+      await this.#openAthena(svc, uuids);
+      return;
+    }
+    this.model = 'classic';
+
+    const listen = async (id, label, fn, optional) => {
+      this.step = label;
+      try {
+        const c = await svc.getCharacteristic(id);
+        c.addEventListener('characteristicvaluechanged', (e) => fn(e.target.value));
+        await c.startNotifications();
+        this.chars.push(c);
+      } catch (e) {
+        if (!optional) throw e;
+        console.warn(`Muse: ${label} unavailable`, e);
+        this.missing.push(label);
+      }
     };
 
     for (let ch = 0; ch < 4; ch++) {
-      await listen(EEG[ch], (v) => this.onPacket({ kind: 'eeg', ch, seq: v.getUint16(0), samples: decode12(v) }));
+      await listen(EEG[ch], `EEG ${CHANNELS[ch]}`, (v) => this.onPacket({ kind: 'eeg', ch, seq: v.getUint16(0), samples: decode12(v) }), false);
     }
     for (let ch = 0; ch < 3; ch++) {
-      await listen(PPG[ch], (v) => this.onPacket({ kind: 'ppg', ch, seq: v.getUint16(0), samples: decode24(v) }));
+      await listen(PPG[ch], `PPG ${ch + 1}`, (v) => this.onPacket({ kind: 'ppg', ch, seq: v.getUint16(0), samples: decode24(v) }), true);
     }
-    await listen(ACCEL, (v) => this.onPacket({ kind: 'accel', seq: v.getUint16(0), xyz: decodeImu(v, 0.0000610352) }));
-    await listen(GYRO, (v) => this.onPacket({ kind: 'gyro', seq: v.getUint16(0), xyz: decodeImu(v, 0.0074768) }));
-    await listen(TELEMETRY, (v) => this.onTelemetry({ battery: v.getUint16(2) / 512 }));
+    await listen(ACCEL, 'accelerometer', (v) => this.onPacket({ kind: 'accel', seq: v.getUint16(0), xyz: decodeImu(v, 0.0000610352) }), true);
+    await listen(GYRO, 'gyroscope', (v) => this.onPacket({ kind: 'gyro', seq: v.getUint16(0), xyz: decodeImu(v, 0.0074768) }), true);
+    await listen(TELEMETRY, 'battery', (v) => this.onTelemetry({ battery: v.getUint16(2) / 512 }), true);
 
+    this.step = 'start stream';
     await this.#send('h');
     await this.#send('p50'); // preset with PPG
     await this.#send('s');
     await this.#send('d');
+    this.step = 'streaming';
+  }
+
+  async #openAthena(svc, uuids) {
+    this.model = 'athena';
+    if (!/athena|ms-03/i.test(this.name)) this.name = `${this.name} (Athena)`;
+    this.counters = {};
+    this.eegPackets = 0;
+    const onData = (e) => {
+      const v = e.target.value;
+      parseAthena(new Uint8Array(v.buffer, v.byteOffset, v.byteLength), (sub) => this.#athenaSub(sub));
+    };
+    this.step = 'athena data';
+    const data = await svc.getCharacteristic(ATHENA_DATA);
+    data.addEventListener('characteristicvaluechanged', onData);
+    await data.startNotifications();
+    this.chars.push(data);
+    if (uuids.includes(ATHENA_DATA2)) {
+      try {
+        const d2 = await svc.getCharacteristic(ATHENA_DATA2);
+        d2.addEventListener('characteristicvaluechanged', onData);
+        await d2.startNotifications();
+        this.chars.push(d2);
+      } catch { /* usually silent; some platforms refuse it */ }
+    }
+    this.step = 'athena start';
+    for (const [cmd, ms] of [['v6', 200], ['s', 200], ['h', 200], [ATHENA_PRESET, 200], ['s', 200], ['dc001', 50], ['dc001', 100], ['L1', 300], ['s', 200]]) {
+      await this.control.writeValue(encode(cmd));
+      await wait(ms);
+    }
+    const arrived = async () => { for (let t = 0; t < 2000 && !this.eegPackets; t += 100) await wait(100); return this.eegPackets > 0; };
+    if (!(await arrived())) {
+      await this.control.writeValue(encode('d')); // some firmware ignores dc001
+      if (!(await arrived())) throw new Error('Muse S Athena connected, but no EEG data arrived');
+    }
+    this.step = 'streaming';
+  }
+
+  // Turns the 8-bit subpacket counter into a steadily rising sequence number per sensor.
+  #seq(key, index) {
+    const c = this.counters[key];
+    if (!c) { this.counters[key] = { last: index, seq: 0 }; return 0; }
+    c.seq = (c.seq + ((index - c.last + 256) % 256 || 256)) & 0xffff;
+    c.last = index;
+    return c.seq;
+  }
+
+  #athenaSub({ type, tag, index, values }) {
+    if (type === 'eeg') {
+      this.eegPackets++;
+      const seq = this.#seq(`eeg${tag}`, index);
+      for (let ch = 0; ch < 4; ch++) this.onPacket({ kind: 'eeg', ch, seq, samples: values[ch] });
+    } else if (type === 'optics') {
+      // LI 730 nm, LI 850 nm (used for heartbeats), RI 850 nm.
+      const seq = this.#seq(`opt${tag}`, index);
+      [values[0], values[2], values[3]].forEach((samples, ch) => samples && this.onPacket({ kind: 'ppg', ch, seq, samples }));
+    } else if (type === 'motion') {
+      const seq = this.#seq('motion', index);
+      const n = values[0].length;
+      const xyz = (from) => Array.from({ length: n }, (_, s) => [values[from][s], values[from + 1][s], values[from + 2][s]]);
+      this.onPacket({ kind: 'accel', seq, xyz: xyz(0) });
+      this.onPacket({ kind: 'gyro', seq, xyz: xyz(3) });
+    } else if (type === 'battery') {
+      this.onTelemetry({ battery: values[0][0] });
+    }
   }
 
   #send(cmd) {

@@ -223,6 +223,7 @@ export class Aligner {
   }
 
   add(ch, seq, samples) {
+    if (samples.length !== this.perPacket) { this.reset(); this.perPacket = samples.length; } // Muse 2 and Athena pack differently
     const s = this.unwrap(seq);
     const ms = (this.perPacket / this.fs) * 1000;
     if (this.epoch === null) this.epoch = performance.now() - s * ms;

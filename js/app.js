@@ -1,10 +1,10 @@
-import { Galaxy } from './galaxy.js?v=15';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=15';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=15';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=15';
-import { Soundscape } from './audio.js?v=15';
-import { hostRelay, joinRelay } from './relay.js?v=15';
-import { tr, applyLang, setLang, locale } from './i18n.js?v=15';
+import { Galaxy } from './galaxy.js?v=17';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=17';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd } from './dsp.js?v=17';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=17';
+import { Soundscape } from './audio.js?v=17';
+import { hostRelay, joinRelay } from './relay.js?v=17';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=17';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -167,11 +167,15 @@ $('btn-muse').onclick = async () => {
     const s = new MuseSource();
     attach(s);
     await s.connect();
-    st.textContent = '';
+    st.textContent = s.missing.length ? tr('已連線，但這些感測器無法使用：{0}', s.missing.join(', ')) : '';
     go('settings');
   } catch (e) {
+    const step = S.source?.step || 'choose';
+    console.error('Muse connection failed at', step, e);
     S.source = null;
-    st.textContent = e.name === 'NotFoundError' ? tr('未選擇裝置。請確認 Muse 已開機，且官方 App 已斷線。') : tr('連線失敗：{0}', e.message);
+    st.textContent = e.name === 'NotFoundError' && step === 'choose'
+      ? tr('未選擇裝置。請確認 Muse 已開機，且官方 App 已斷線。')
+      : tr('連線失敗（{0}）：{1}', step, `${e.name} ${e.message}`);
   }
 };
 $('btn-receive').onclick = () => go('receive');
@@ -237,7 +241,7 @@ async function beginCalibration() {
   S.t0 = performance.now();
   S.calibStart = S.t0;
   S.sum = newSummary();
-  S.rec = new Recorder({ subject: S.settings.subject, note: S.settings.note, source: S.source.name, settings: { ...S.settings } });
+  S.rec = new Recorder({ subject: S.settings.subject, note: S.settings.note, source: S.source.name, model: S.source.model || 'simulated', settings: { ...S.settings } });
   try { await S.rec.open(); } catch (e) { S.rec = null; note(tr('無法開啟本機儲存，這次不會記錄：{0}', e.message)); }
   logEvent('calibration_start');
   S.phase = 'calib';

@@ -209,6 +209,8 @@ const T = {
   '刪除': ['Delete', '削除'],
   '確定刪除？': ['Delete?', '削除しますか？'],
   '已匯出 summary.csv': ['Exported summary.csv', 'summary.csv を書き出しました'],
+  '連線失敗（{0}）：{1}': ['Connection failed ({0}): {1}', '接続に失敗しました（{0}）：{1}'],
+  '已連線，但這些感測器無法使用：{0}': ['Connected, but these sensors are unavailable: {0}', '接続しましたが、次のセンサーは使えません：{0}'],
   '模擬資料': ['Simulated data', 'シミュレーション'],
   '平穩': ['Steady', '安定'],
   '{0} 偏強': ['{0} strong', '{0} 強め'],
