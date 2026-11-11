@@ -233,6 +233,7 @@ const T = {
   '高頻 β（20–30 Hz）偏高且訊號不穩定。這一項的研究證據最弱，咬牙、皺眉的肌肉訊號也會造成相同結果。': ['High β (20–30 Hz) is elevated and unsteady. This has the weakest evidence, and muscle signals from clenching or frowning look the same.', '高周波 β（20〜30 Hz）が高く不安定です。この項目は研究上の根拠が最も弱く、歯の食いしばりやしかめ面でも同じ結果になります。'],
   '注意': ['Please note', '注意'],
   '這些是傾向，不是診斷，也無法知道您在想什麼。Muse 只有四個乾電極，個人差異也很大，建議多次記錄後與自己比較。': ['These are tendencies, not a diagnosis, and they cannot tell what you are thinking. Muse has only four dry electrodes and people differ widely, so record several sessions and compare with yourself.', 'これは傾向であり診断ではなく、考えている内容もわかりません。Muse は乾式電極が4つだけで個人差も大きいため、複数回記録して自分自身と比較してください。'],
+  '安裝 App': ['Install app', 'アプリをインストール'],
   '模擬資料': ['Simulated data', 'シミュレーション'],
   '平穩': ['Steady', '安定'],
   '{0} 偏強': ['{0} strong', '{0} 強め'],

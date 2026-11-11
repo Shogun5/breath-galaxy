@@ -4,9 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>星息 Breath Galaxy</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0B0D10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="星息">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Noto+Sans+JP:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=19">
+<link rel="stylesheet" href="css/style.css?v=20">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -26,6 +34,7 @@
       <button class="text" id="btn-receive">Quest 接收手機資料</button>
       <a class="text" href="#history">歷史紀錄</a>
       <a class="text" href="#guide">怎麼看這片銀河</a>
+      <button class="text" id="btn-install" hidden>安裝 App</button>
     </div>
     <ul class="checks" id="checks"></ul>
     <p class="fine">本程式用於放鬆訓練與教學，非醫療器材，不作診斷。資料只存在此裝置。</p>
@@ -262,6 +271,6 @@
   <button data-lang="zh">中文</button><button data-lang="en">EN</button><button data-lang="ja">日本語</button>
 </div>
 
-<script type="module" src="js/app.js?v=19"></script>
+<script type="module" src="js/app.js?v=20"></script>
 </body>
 </html>

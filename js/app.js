@@ -1,10 +1,10 @@
-import { Galaxy } from './galaxy.js?v=19';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=19';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd, StateEstimator } from './dsp.js?v=19';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=19';
-import { Soundscape } from './audio.js?v=19';
-import { hostRelay, joinRelay } from './relay.js?v=19';
-import { tr, applyLang, setLang, locale } from './i18n.js?v=19';
+import { Galaxy } from './galaxy.js?v=20';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=20';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd, StateEstimator } from './dsp.js?v=20';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=20';
+import { Soundscape } from './audio.js?v=20';
+import { hostRelay, joinRelay } from './relay.js?v=20';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=20';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
@@ -857,6 +857,23 @@ document.querySelector('.lang-bar').addEventListener('click', (e) => {
     paintDisplay(); // keeps anything typed but not yet saved
   } else route();
 });
+
+// Installable app: offline cache, plus an install button where the browser offers one.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch((e) => console.warn('service worker', e));
+let installPrompt = null;
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $('btn-install').hidden = false;
+});
+addEventListener('appinstalled', () => { installPrompt = null; $('btn-install').hidden = true; });
+$('btn-install').onclick = async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  $('btn-install').hidden = true;
+};
 
 applyLang();
 deviceChecks();

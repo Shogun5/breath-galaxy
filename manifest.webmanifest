@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "星息 Breath Galaxy",
+  "short_name": "星息",
+  "description": "Muse 腦波與呼吸的 3D 銀河，可用於手機、XREAL 與 Quest。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#020308",
+  "theme_color": "#0B0D10",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
