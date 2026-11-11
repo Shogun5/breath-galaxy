@@ -2,7 +2,8 @@
 const T = {
   '星息': ['Breath Galaxy', '星の息'],
   '讓腦波點亮銀河，跟著波紋呼吸。': ['Let your brainwaves light a galaxy, and breathe with it.', '脳波で銀河を灯し、光に合わせて呼吸する。'],
-  '連接 Muse 2': ['Connect Muse 2', 'Muse 2 に接続'],
+  '連接 Muse': ['Connect Muse', 'Muse に接続'],
+  '呼吸引導（放射光芒與節奏提示）': ['Breathing guide (radiating light and rhythm cues)', '呼吸ガイド（放射する光とリズムの合図）'],
   '使用模擬資料': ['Use simulated data', 'シミュレーションを使う'],
   'Quest 接收手機資料': ['Receive phone data on Quest', 'Quest でスマホのデータを受信'],
   '歷史紀錄': ['History', '履歴'],

@@ -6,7 +6,7 @@
 <title>星息 Breath Galaxy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;500&family=Noto+Sans+JP:wght@300;500&family=Space+Grotesk:wght@300;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=18">
+<link rel="stylesheet" href="css/style.css?v=19">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -14,11 +14,11 @@
 
 <section class="screen" data-screen="home">
   <div class="panel">
-    <p class="eyebrow">Muse 2 × WebXR</p>
+    <p class="eyebrow">Muse × WebXR</p>
     <h1>星息</h1>
     <p class="lede">讓腦波點亮銀河，跟著波紋呼吸。</p>
     <div class="actions">
-      <button class="primary" id="btn-muse">連接 Muse 2</button>
+      <button class="primary" id="btn-muse">連接 Muse</button>
       <button id="btn-sim">使用模擬資料</button>
     </div>
     <p class="status" id="connect-status" role="status"></p>
@@ -51,10 +51,13 @@
     </fieldset>
 
     <fieldset><legend>呼吸頻率</legend>
+      <label class="check"><input type="checkbox" id="breathGuide"> 呼吸引導（放射光芒與節奏提示）</label>
+      <div id="breath-controls">
       <div class="range-row"><output class="big-num" id="breath-out"></output><span class="unit">次／分</span>
       <input type="range" id="breath" min="4" max="10" step="0.5" aria-label="呼吸頻率"></div>
       <div class="range-row"><output class="mid-num" id="ratio-out"></output><span class="unit">吸：吐</span>
       <input type="range" id="inhale" min="30" max="50" step="5" aria-label="吸氣比例"></div>
+      </div>
     </fieldset>
 
     <fieldset><legend>場景</legend>
@@ -259,6 +262,6 @@
   <button data-lang="zh">中文</button><button data-lang="en">EN</button><button data-lang="ja">日本語</button>
 </div>
 
-<script type="module" src="js/app.js?v=18"></script>
+<script type="module" src="js/app.js?v=19"></script>
 </body>
 </html>

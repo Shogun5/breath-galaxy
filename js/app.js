@@ -1,14 +1,14 @@
-import { Galaxy } from './galaxy.js?v=18';
-import { MuseSource, SimSource, CHANNELS } from './sources.js?v=18';
-import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd, StateEstimator } from './dsp.js?v=18';
-import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=18';
-import { Soundscape } from './audio.js?v=18';
-import { hostRelay, joinRelay } from './relay.js?v=18';
-import { tr, applyLang, setLang, locale } from './i18n.js?v=18';
+import { Galaxy } from './galaxy.js?v=19';
+import { MuseSource, SimSource, CHANNELS } from './sources.js?v=19';
+import { EegAnalyzer, BeatTracker, Aligner, BANDS, rmssd, StateEstimator } from './dsp.js?v=19';
+import { Recorder, listSessions, deleteSession, exportSession, summaryCsv, deliver } from './recorder.js?v=19';
+import { Soundscape } from './audio.js?v=19';
+import { hostRelay, joinRelay } from './relay.js?v=19';
+import { tr, applyLang, setLang, locale } from './i18n.js?v=19';
 
 const $ = (id) => document.getElementById(id);
 const CALIB_SEC = 60, EARLY_SEC = 10;
-const DEFAULTS = { minutes: 10, goal: 'relax', breath: 6, inhale: 40, display: 'flat', sbsFormat: 'auto', music: true, heart: true, subject: '', note: '', recordRaw: true, tilt: true, view: 'galaxy' };
+const DEFAULTS = { minutes: 10, goal: 'relax', breath: 6, inhale: 40, display: 'flat', sbsFormat: 'auto', music: true, heart: true, subject: '', note: '', recordRaw: true, tilt: true, view: 'galaxy', breathGuide: true };
 const GOAL_LABEL = { relax: '放鬆', focus: '專注', coherence: '呼吸同調' };
 const GOAL_BAND = { relax: 2, focus: 3 };
 
@@ -187,9 +187,9 @@ function fillSettings() {
   document.querySelectorAll('.seg').forEach(paintSeg);
   $('minutes-custom').value = [5, 10, 15].includes(v.minutes) ? '' : v.minutes;
   $('breath').value = v.breath; $('inhale').value = v.inhale;
-  for (const k of ['music', 'heart', 'recordRaw', 'tilt']) $(k).checked = v[k];
+  for (const k of ['music', 'heart', 'recordRaw', 'tilt', 'breathGuide']) $(k).checked = v[k];
   for (const k of ['subject', 'note', 'sbsFormat']) $(k).value = v[k];
-  paintRanges(); paintDisplay();
+  paintRanges(); paintDisplay(); paintBreathGuide();
   galaxy.setView(v.view);
 }
 function paintSeg(seg) {
@@ -224,11 +224,13 @@ $('minutes-custom').oninput = (e) => {
   const n = Number(e.target.value);
   if (n >= 1 && n <= 120) { S.settings.minutes = n; paintSeg(document.querySelector('[data-key=minutes]')); }
 };
+function paintBreathGuide() { $('breath-controls').hidden = !$('breathGuide').checked; }
+$('breathGuide').onchange = paintBreathGuide;
 $('breath').oninput = (e) => { S.settings.breath = Number(e.target.value); paintRanges(); };
 $('inhale').oninput = (e) => { S.settings.inhale = Number(e.target.value); paintRanges(); };
 $('settings-form').onsubmit = async (e) => {
   e.preventDefault();
-  for (const k of ['music', 'heart', 'recordRaw', 'tilt']) S.settings[k] = $(k).checked;
+  for (const k of ['music', 'heart', 'recordRaw', 'tilt', 'breathGuide']) S.settings[k] = $(k).checked;
   for (const k of ['subject', 'note', 'sbsFormat']) S.settings[k] = $(k).value.trim();
   store.set(S.settings);
   await beginCalibration();
@@ -356,6 +358,13 @@ function advance() {
 
 function visualTick(st, elapsed, paused) {
   const b = breathAt(elapsed, st);
+  if (st.breathGuide === false) {
+    // No guidance: the light stays at the core and the music does not swell with a breath rhythm.
+    galaxy.setBreath(0.4, 0);
+    sound.update(b.cycle, true, 0.5, !paused);
+    b.off = true;
+    return b;
+  }
   galaxy.setBreath(b.radius, b.level);
   sound.update(b.cycle, b.inhale, b.p, !paused);
   return b;
@@ -369,7 +378,7 @@ galaxy.onFrame = () => {
     if (S.phase !== 'session') return;
     const b = visualTick(S.settings, S.elapsed, S.paused);
     const key = `${b.n}${b.inhale}`;
-    if (key !== S.breathPhase) { S.breathPhase = key; logEvent(b.inhale ? 'breath_inhale' : 'breath_exhale'); }
+    if (!b.off && key !== S.breathPhase) { S.breathPhase = key; logEvent(b.inhale ? 'breath_inhale' : 'breath_exhale'); }
     if (S.beats.ibi && S.nextBeat && now >= S.nextBeat && now - S.lastBeatWall < 4000) { fireBeat(); S.nextBeat += S.beats.ibi; }
     if (now > hudAt) { hudAt = now + 200; drawHud(b); }
   } else if (S.follower?.running) {
@@ -379,7 +388,7 @@ galaxy.onFrame = () => {
     const b = visualTick(f.settings, f.elapsed, f.paused);
     if (now > hudAt) {
       hudAt = now + 250;
-      galaxy.setHud(clock(Math.max(0, f.settings.minutes * 60 - f.elapsed)), f.paused ? tr('暫停') : b.inhale ? tr('吸氣') : tr('吐氣'), f.hr ? `${Math.round(f.hr)} bpm` : '');
+      galaxy.setHud(clock(Math.max(0, f.settings.minutes * 60 - f.elapsed)), f.paused ? tr('暫停') : b.off ? '' : b.inhale ? tr('吸氣') : tr('吐氣'), f.hr ? `${Math.round(f.hr)} bpm` : '');
     }
   } else if (S.phase === 'calib' && S.an.baseline === null) {
     idleEnergy(now);
@@ -412,7 +421,7 @@ function showState(key) {
 
 function drawHud(b) {
   const left = S.settings.minutes * 60 - S.elapsed;
-  const word = S.paused ? tr('暫停') : b.inhale ? tr('吸氣') : tr('吐氣');
+  const word = S.paused ? tr('暫停') : b.off ? '' : b.inhale ? tr('吸氣') : tr('吐氣');
   const hr = S.beats.bpm;
   $('h-time').textContent = clock(Math.max(0, left));
   $('h-breath').textContent = word;

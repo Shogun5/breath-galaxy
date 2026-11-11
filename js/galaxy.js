@@ -3,8 +3,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { tr } from './i18n.js?v=18';
-import { SENSORS, buildBrain, makeLabel } from './brain.js?v=18';
+import { tr } from './i18n.js?v=19';
+import { SENSORS, buildBrain, makeLabel } from './brain.js?v=19';
 
 const HIST_W = 64, HIST_H = 20;
 const FLAT_BG = 0x020308;
@@ -345,8 +345,9 @@ export class Galaxy {
     this.world.add(this.brain.group);
     this.labels = SENSORS.map((s) => {
       const tag = makeLabel(`${s.id} ${tr(s.place)}`);
-      tag.position.copy(s.pos).multiplyScalar(1.22);
-      tag.position.y += 0.5;
+      // Out past the scalp and above it, so the brain does not sit behind the text.
+      tag.position.copy(s.pos).multiplyScalar(s.id.startsWith('AF') ? 1.5 : 1.3);
+      tag.position.y += s.id.startsWith('AF') ? 2.8 : 0.9;
       this.world.add(tag);
       return tag;
     });
