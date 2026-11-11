@@ -1,6 +1,6 @@
 // Offline support for the installed app. Pages and code are fetched fresh when online
 // (so updates show up at once) and served from the cache when offline.
-const CACHE = 'breath-galaxy-v20';
+const CACHE = 'breath-galaxy-v21';
 const CDN = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (e) => {
